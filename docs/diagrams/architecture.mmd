@@ -1,0 +1,27 @@
+graph TD
+    subgraph Data Generation & Ingestion
+        GEN["Python Event Simulator"] -->|Raw Event Stream| KAFKA["Apache Kafka"]
+    end
+
+    subgraph Stream Processing & Quality Engine
+        KAFKA -->|Consume Stream| FLINK["Apache Flink"]
+        FLINK -->|Inline Rules| VAL["Validation & Anomaly Detection"]
+    end
+
+    subgraph Storage & Lakehouse
+        VAL -->|Valid Records| ICEBERG["Apache Iceberg Lakehouse"]
+        ICEBERG -->|Parquet Metadata| MINIO["MinIO Object Storage"]
+        VAL -->|Invalid Records| QUAR["Quarantine Store"]
+        QUAR -->|Log Context| PG["PostgreSQL Database"]
+    end
+
+    subgraph Observability & Control Plane
+        FLINK -->|Window Metrics| PROM["Prometheus"]
+        VAL -->|Error Rates & Incidents| PG
+        PROM -->|Metrics Telemetry| GRAF["Grafana Dashboards"]
+        VAL -->|Breach Alert| SLACK["Slack Webhook"]
+        PG -->|Query Incidents & Lineage| FASTAPI["FastAPI Backend"]
+        PROM -->|PromQL API| FASTAPI
+        FASTAPI -->|REST & WebSockets| REACT["React Dashboard"]
+        REACT -->|Lineage Graph| RF["React Flow UI"]
+    end

@@ -1,0 +1,67 @@
+# ==============================================================================
+# IceStream - Real-Time Lakehouse Observability & Self-Healing Data Pipeline
+# ==============================================================================
+# DAY 1 PLACEHOLDER DOCKER COMPOSE SPECIFICATION
+#
+# IMPORTANT NOTICE:
+# This file is an architecture placeholder for Phase 1.
+# Services are currently commented out and NOT operational on Day 1.
+# Infrastructure services will be incrementally enabled in upcoming phases:
+#   - Phase 2: Storage & Ingestion (Kafka, PostgreSQL, MinIO, Iceberg Catalog)
+#   - Phase 3: Processing & Quality Engine (Flink JobManager/TaskManager)
+#   - Phase 4: Observability & Web Application (Backend API, Frontend Dashboard, Prometheus, Grafana)
+# ==============================================================================
+
+version: '3.8'
+
+# Planned Services Architecture Overview:
+#
+# services:
+#   # Event Generator & Ingestion Layer
+#   kafka:
+#     # Planned: Single-node Apache Kafka / KRaft for real-time event streaming
+#
+#   # Stream Processing Layer
+#   flink-jobmanager:
+#     # Planned: Apache Flink JobManager for stream job coordination
+#   flink-taskmanager:
+#     # Planned: Apache Flink TaskManager for distributed event validation
+#
+#   # Data Lakehouse & Storage Layer
+#   minio:
+#     # Planned: MinIO S3-compatible object storage for Iceberg table storage
+#   iceberg-rest:
+#     # Planned: Apache Iceberg REST Catalog manager
+#   postgres:
+#     # Planned: PostgreSQL metadata storage for incidents, audit logs, and lineage
+#
+#   # Observability & Metrics Layer
+#   prometheus:
+#     # Planned: Prometheus metrics collector for pipeline health & error rates
+#   grafana:
+#     # Planned: Grafana dashboard for real-time visual telemetry
+#
+#   # Web Application & API Layer
+#   backend:
+#     # Planned: FastAPI application providing REST API & WebSockets for frontend
+#   frontend:
+#     # Planned: React dashboard with React Flow for interactive lineage & circuit breaker control
+
+services:
+  placeholder:
+    image: alpine:latest
+    container_name: icestream-architecture-placeholder
+    command: >
+      sh -c "echo 'IceStream Architecture Placeholder - Phase 1 Complete.' && echo 'Services will be configured in Phase 2+.'"
+    profiles:
+      - placeholder
+
+networks:
+  icestream-net:
+    name: icestream-net
+    driver: bridge
+
+volumes:
+  postgres-data:
+  minio-data:
+  kafka-data:

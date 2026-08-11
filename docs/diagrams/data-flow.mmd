@@ -1,0 +1,31 @@
+sequenceDiagram
+    autonumber
+    participant Gen as Event Simulator
+    participant Kaf as Kafka (raw-events)
+    participant Fln as Flink Processing
+    participant Val as Validation Engine
+    participant Ice as Iceberg Lakehouse
+    participant Qrn as Quarantine Store
+    participant Obs as Observability & Metrics
+    participant Inc as Incident Manager
+    participant Alt as Slack Alerting
+    participant Rec as Recovery Workflow
+
+    Gen->>Kaf: 1. Publish Event Payload
+    Kaf->>Fln: 2. Consume Raw Event Stream
+    Fln->>Val: 3. Parse & Evaluate Quality Rules
+    
+    alt Event is Valid
+        Val->>Ice: 4a. Write Valid Record to Lakehouse
+    else Event is Invalid
+        Val->>Qrn: 4b. Divert Invalid Record to Quarantine
+        Val->>Obs: 5. Increment Windowed Error Rate
+    end
+
+    opt Error Rate Exceeds Threshold
+        Obs->>Inc: 6. Trigger Circuit Breaker OPEN & Create Incident
+        Inc->>Alt: 7. Dispatch Alert Notification to Slack
+        Alt->>Rec: 8. Trigger Recovery Validation & Half-Open Check
+        Rec->>Kaf: 9. Replay Corrected Quarantine Payload
+        Rec->>Obs: 10. Reset Circuit Breaker to CLOSED & Resume Ingestion
+    end
