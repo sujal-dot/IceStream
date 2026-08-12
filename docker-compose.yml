@@ -1,67 +1,216 @@
 # ==============================================================================
 # IceStream - Real-Time Lakehouse Observability & Self-Healing Data Pipeline
 # ==============================================================================
-# DAY 1 PLACEHOLDER DOCKER COMPOSE SPECIFICATION
+# DAY 2 LOCAL DOCKER INFRASTRUCTURE SPECIFICATION
 #
-# IMPORTANT NOTICE:
-# This file is an architecture placeholder for Phase 1.
-# Services are currently commented out and NOT operational on Day 1.
-# Infrastructure services will be incrementally enabled in upcoming phases:
-#   - Phase 2: Storage & Ingestion (Kafka, PostgreSQL, MinIO, Iceberg Catalog)
-#   - Phase 3: Processing & Quality Engine (Flink JobManager/TaskManager)
-#   - Phase 4: Observability & Web Application (Backend API, Frontend Dashboard, Prometheus, Grafana)
+# Infrastructure Services:
+#   - Kafka (KRaft mode broker)
+#   - MinIO (S3-compatible object store)
+#   - PostgreSQL (Metadata & incident store)
+#   - Flink JobManager & TaskManager (Stream processing cluster)
+#   - Prometheus (Metrics collection)
+#   - Grafana (Telemetry dashboard)
 # ==============================================================================
 
-version: '3.8'
-
-# Planned Services Architecture Overview:
-#
-# services:
-#   # Event Generator & Ingestion Layer
-#   kafka:
-#     # Planned: Single-node Apache Kafka / KRaft for real-time event streaming
-#
-#   # Stream Processing Layer
-#   flink-jobmanager:
-#     # Planned: Apache Flink JobManager for stream job coordination
-#   flink-taskmanager:
-#     # Planned: Apache Flink TaskManager for distributed event validation
-#
-#   # Data Lakehouse & Storage Layer
-#   minio:
-#     # Planned: MinIO S3-compatible object storage for Iceberg table storage
-#   iceberg-rest:
-#     # Planned: Apache Iceberg REST Catalog manager
-#   postgres:
-#     # Planned: PostgreSQL metadata storage for incidents, audit logs, and lineage
-#
-#   # Observability & Metrics Layer
-#   prometheus:
-#     # Planned: Prometheus metrics collector for pipeline health & error rates
-#   grafana:
-#     # Planned: Grafana dashboard for real-time visual telemetry
-#
-#   # Web Application & API Layer
-#   backend:
-#     # Planned: FastAPI application providing REST API & WebSockets for frontend
-#   frontend:
-#     # Planned: React dashboard with React Flow for interactive lineage & circuit breaker control
+name: icestream
 
 services:
-  placeholder:
-    image: alpine:latest
-    container_name: icestream-architecture-placeholder
-    command: >
-      sh -c "echo 'IceStream Architecture Placeholder - Phase 1 Complete.' && echo 'Services will be configured in Phase 2+.'"
-    profiles:
-      - placeholder
+  # ----------------------------------------------------------------------------
+  # Apache Kafka - Distributed Event Streaming (KRaft Mode)
+  # ----------------------------------------------------------------------------
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: icestream-kafka
+    restart: unless-stopped
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: ${KAFKA_BROKER_ID:-1}
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,DOCKER://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,DOCKER://kafka:29092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,DOCKER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_CLUSTER_ID: ${KAFKA_CLUSTER_ID:-4L6g3nShT-eMCtK--X86sw}
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    volumes:
+      - icestream_kafka_data:/var/lib/kafka/data
+    networks:
+      - icestream-network
+
+  # ----------------------------------------------------------------------------
+  # MinIO - S3-Compatible Object Store for Apache Iceberg
+  # ----------------------------------------------------------------------------
+  minio:
+    image: minio/minio:RELEASE.2024-03-21T23-13-43Z
+    container_name: icestream-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-icestream_minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-icestream_minio_secret}
+    healthcheck:
+      test: ["CMD-SHELL", "mc ready local || curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - icestream_minio_data:/data
+    networks:
+      - icestream-network
+
+  # ----------------------------------------------------------------------------
+  # PostgreSQL - Operational Metadata & Incident Log Database
+  # ----------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: icestream-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-icestream_db}
+      POSTGRES_USER: ${POSTGRES_USER:-icestream_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-icestream_password}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-icestream_user} -d ${POSTGRES_DB:-icestream_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - icestream_postgres_data:/var/lib/postgresql/data
+    networks:
+      - icestream-network
+
+  # ----------------------------------------------------------------------------
+  # Apache Flink JobManager - Stream Processing Coordinator
+  # ----------------------------------------------------------------------------
+  flink-jobmanager:
+    image: flink:1.18.1-scala_2.12-java11
+    container_name: icestream-flink-jobmanager
+    restart: unless-stopped
+    command: jobmanager
+    ports:
+      - "8081:8081"
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/v1/overview || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - icestream-network
+
+  # ----------------------------------------------------------------------------
+  # Apache Flink TaskManager - Stream Processing Execution Worker
+  # ----------------------------------------------------------------------------
+  flink-taskmanager:
+    image: flink:1.18.1-scala_2.12-java11
+    container_name: icestream-flink-taskmanager
+    restart: unless-stopped
+    command: taskmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 2
+    depends_on:
+      flink-jobmanager:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://flink-jobmanager:8081/v1/taskmanagers | grep -q 'taskmanagers' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - icestream-network
+
+  # ----------------------------------------------------------------------------
+  # Prometheus - Infrastructure Metrics Collector
+  # ----------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: icestream-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - icestream_prometheus_data:/prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9090/-/healthy || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - icestream-network
+
+  # ----------------------------------------------------------------------------
+  # Grafana - Infrastructure Metrics Visualization Dashboard
+  # ----------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:10.4.1
+    container_name: icestream-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    volumes:
+      - icestream_grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - icestream-network
 
 networks:
-  icestream-net:
-    name: icestream-net
+  icestream-network:
+    name: icestream-network
     driver: bridge
 
 volumes:
-  postgres-data:
-  minio-data:
-  kafka-data:
+  icestream_kafka_data:
+    name: icestream_kafka_data
+  icestream_minio_data:
+    name: icestream_minio_data
+  icestream_postgres_data:
+    name: icestream_postgres_data
+  icestream_prometheus_data:
+    name: icestream_prometheus_data
+  icestream_grafana_data:
+    name: icestream_grafana_data

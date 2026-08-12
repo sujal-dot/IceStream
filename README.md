@@ -17,11 +17,33 @@ By combining stream processing with lakehouse table formats, real-time circuit b
 
 > **CURRENT STATUS**: **Phase 1 — Architecture & Environment**
 
-This repository is currently in **Phase 1 (Architecture & Environment Design)**.
-- **Implemented on Day 1**: Project architecture specifications, repository directory layout, component documentation, failure resilience matrices, recovery workflow specifications, configuration placeholders, and system diagrams.
-- **To Be Implemented (Upcoming Day 2+)**: Infrastructure services (Kafka, Flink, Iceberg, MinIO, PostgreSQL, Prometheus, Grafana), event simulation engines, quality validation rules, circuit breaker state logic, FastAPI services, and React UI components.
+- **Day 1 — Architecture** ✓
+- **Day 2 — Docker Infrastructure** ✓
+- **Day 3 — Kafka + Event Simulator** — Upcoming
 
-*Note: Component references in this document reflect planned architecture targets.*
+- **Implemented on Day 1**: Project architecture specifications, repository directory layout, component documentation, failure resilience matrices, recovery workflow specifications, configuration placeholders, and system diagrams.
+- **Implemented on Day 2**: Local Docker Compose infrastructure orchestrating Kafka (KRaft), MinIO, PostgreSQL, Flink (JobManager & TaskManager), Prometheus, and Grafana with native container health checks.
+- **To Be Implemented (Upcoming Day 3+)**: Python event simulation engine, Kafka event streams, Flink streaming jobs, Iceberg lakehouse tables, data-quality engine, circuit breaker state logic, FastAPI services, and React UI components.
+
+*Note: Application component references in this document reflect planned architecture targets.*
+
+---
+
+## Current Infrastructure
+
+The local containerized development environment is fully operational and verified via Docker Compose:
+
+| Infrastructure Service | Container Name | Version / Image | Exposed Port | Health Status |
+| :--- | :--- | :--- | :--- | :---: |
+| **Apache Kafka** | `icestream-kafka` | `apache/kafka:3.7.0` (KRaft Mode) | `localhost:9092` | `healthy` ✓ |
+| **MinIO** | `icestream-minio` | `minio/minio:RELEASE.2024-03-21` | `localhost:9000` / `9001` | `healthy` ✓ |
+| **PostgreSQL** | `icestream-postgres` | `postgres:16-alpine` | `localhost:5432` | `healthy` ✓ |
+| **Flink JobManager** | `icestream-flink-jobmanager` | `flink:1.18.1-scala_2.12-java11` | `localhost:8081` | `healthy` ✓ |
+| **Flink TaskManager** | `icestream-flink-taskmanager` | `flink:1.18.1-scala_2.12-java11` | Internal (`icestream-network`) | `healthy` ✓ |
+| **Prometheus** | `icestream-prometheus` | `prom/prometheus:v2.51.0` | `localhost:9090` | `healthy` ✓ |
+| **Grafana** | `icestream-grafana` | `grafana/grafana:10.4.1` | `localhost:3000` | `healthy` ✓ |
+
+All infrastructure specifications and operations procedures are documented in [`docs/infrastructure.md`](docs/infrastructure.md).
 
 ---
 
@@ -269,7 +291,9 @@ icestream/
 
 ## 13. Development Roadmap & Implementation Phases
 
-- [x] **Phase 1 — Architecture & Environment (Day 1)**: Architecture specification, repository design, docs, diagrams, and placeholders.
+- [x] **Phase 1 — Architecture & Environment**:
+  - [x] Day 1: Architecture specification, repository design, docs, diagrams, and placeholders.
+  - [x] Day 2: Local Docker infrastructure (Kafka KRaft, MinIO, PostgreSQL, Flink, Prometheus, Grafana).
 - [ ] **Phase 2 — Streaming Backbone & Ingestion**: Kafka topics, MinIO bucket, PostgreSQL schema, event generator.
 - [ ] **Phase 3 — Stream Processing & Lakehouse Storage**: Flink validation job, Iceberg catalog tables, time travel.
 - [ ] **Phase 4 — Quality Engine & Observability**: Error rate windowing, circuit breaker state machine, Prometheus/Grafana monitoring, Slack alerts.
