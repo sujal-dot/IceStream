@@ -19,13 +19,15 @@ By combining stream processing with lakehouse table formats, real-time circuit b
 
 - **Day 1 — Architecture** ✓
 - **Day 2 — Docker Infrastructure** ✓
-- **Day 3 — Kafka + Event Simulator** — Upcoming
+- **Day 3 — Kafka Architecture** ✓
+- **Day 4 — Event Simulator** — Upcoming
 
 - **Implemented on Day 1**: Project architecture specifications, repository directory layout, component documentation, failure resilience matrices, recovery workflow specifications, configuration placeholders, and system diagrams.
 - **Implemented on Day 2**: Local Docker Compose infrastructure orchestrating Kafka (KRaft), MinIO, PostgreSQL, Flink (JobManager & TaskManager), Prometheus, and Grafana with native container health checks.
-- **To Be Implemented (Upcoming Day 3+)**: Python event simulation engine, Kafka event streams, Flink streaming jobs, Iceberg lakehouse tables, data-quality engine, circuit breaker state logic, FastAPI services, and React UI components.
+- **Implemented on Day 3**: Kafka messaging architecture, 6 core topics (`checkout-events`, `checkout-valid`, `checkout-invalid`, `checkout-dlq`, `pipeline-control`, `schema-events`), partition/retention rules, management scripts (`create_topics.sh`, `verify_topics.sh`), and end-to-end Python producer/consumer verification test suite.
+- **To Be Implemented (Upcoming Day 4+)**: Python event simulation engine, Flink streaming jobs, Iceberg lakehouse tables, data-quality engine, circuit breaker state logic, FastAPI services, and React UI components.
 
-*Note: Application component references in this document reflect planned architecture targets.*
+*Note: Downstream processing component references in this document reflect planned architecture targets.*
 
 ---
 
@@ -294,7 +296,8 @@ icestream/
 - [x] **Phase 1 — Architecture & Environment**:
   - [x] Day 1: Architecture specification, repository design, docs, diagrams, and placeholders.
   - [x] Day 2: Local Docker infrastructure (Kafka KRaft, MinIO, PostgreSQL, Flink, Prometheus, Grafana).
-- [ ] **Phase 2 — Streaming Backbone & Ingestion**: Kafka topics, MinIO bucket, PostgreSQL schema, event generator.
+  - [x] Day 3: Kafka architecture, 6 topics, partition/retention rules, management scripts, and end-to-end Python verification tests.
+- [ ] **Phase 2 — Streaming Backbone & Ingestion**: Event generator, MinIO bucket setup, PostgreSQL metadata schema.
 - [ ] **Phase 3 — Stream Processing & Lakehouse Storage**: Flink validation job, Iceberg catalog tables, time travel.
 - [ ] **Phase 4 — Quality Engine & Observability**: Error rate windowing, circuit breaker state machine, Prometheus/Grafana monitoring, Slack alerts.
 - [ ] **Phase 5 — Control Plane & UI**: FastAPI telemetry backend, React + React Flow lineage visualizer.

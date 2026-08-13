@@ -1,0 +1,4 @@
+# Day 3 Minimal Kafka Testing Dependencies
+kafka-python-ng>=2.2.3
+pytest>=8.0.0
+pyyaml>=6.0.1
