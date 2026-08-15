@@ -21,13 +21,16 @@ By combining stream processing with lakehouse table formats, real-time circuit b
 - **Day 2 — Docker Infrastructure** ✓
 - **Day 3 — Kafka Architecture** ✓
 - **Day 4 — Event Generator** ✓
-- **Day 5 — Flink Streaming** — Upcoming
+- **Day 5 — Fault Injection Engine** ✓
+- **Day 6 — Flink Streaming** — Upcoming
 
 - **Implemented on Day 1**: Project architecture specifications, repository directory layout, component documentation, failure resilience matrices, recovery workflow specifications, configuration placeholders, and system diagrams.
 - **Implemented on Day 2**: Local Docker Compose infrastructure orchestrating Kafka (KRaft), MinIO, PostgreSQL, Flink (JobManager & TaskManager), Prometheus, and Grafana with native container health checks.
 - **Implemented on Day 3**: Kafka messaging architecture, 6 core topics (`checkout-events`, `checkout-valid`, `checkout-invalid`, `checkout-dlq`, `pipeline-control`, `schema-events`), partition/retention rules, management scripts (`create_topics.sh`, `verify_topics.sh`), and end-to-end Python producer/consumer verification test suite.
 - **Implemented on Day 4**: Python e-commerce checkout event generator (`generator/`), configurable high-throughput producer (1,000+ events/sec target), 8 controlled schema anomaly injection types (`null_amount`, `null_customer_id`, `negative_amount`, `duplicate_event_id`, `invalid_currency`, `missing_required_field`, `wrong_data_type`, `future_timestamp`), CLI interface, rate limiter, stats tracker, unit tests, and Kafka integration tests.
-- **To Be Implemented (Upcoming Day 5+)**: Flink streaming jobs, Iceberg lakehouse tables, data-quality engine, circuit breaker state logic, FastAPI services, and React UI components.
+- **Implemented on Day 5**: Controlled Fault Injection Engine (`generator/fault_injection/`), supporting 7 distinct failure modes (`NULL`, `DUPLICATE`, `NEGATIVE`, `INVALID_ENUM`, `SCHEMA_DRIFT`, `TYPE_CHANGE`, `TIMESTAMP_DRIFT`), individual rate CLI flags, fault mode selection, collision handling, runtime statistics tracking, documentation (`docs/fault-injection.md`), and unit/integration tests.
+  *Note: IceStream can now intentionally inject realistic data failures into the Kafka event stream for observability and recovery demonstrations.*
+- **To Be Implemented (Upcoming Day 6+)**: Flink streaming jobs, Iceberg lakehouse tables, data-quality engine, circuit breaker state logic, FastAPI services, and React UI components.
 
 *Note: Downstream processing component references in this document reflect planned architecture targets.*
 

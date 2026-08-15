@@ -119,6 +119,9 @@ def run_generator(config: GeneratorConfig):
         print(f"Average Throughput : {final_stats['average_rate']:.1f} events/sec")
         print("=" * 50)
 
+        # Print Fault Injection Engine summary report
+        print("\n" + engine.fault_engine.statistics.format_summary_report())
+
         producer.close()
         print("Generator stopped cleanly.\n")
 

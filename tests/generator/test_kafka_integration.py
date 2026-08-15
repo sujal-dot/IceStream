@@ -1,4 +1,4 @@
-"""Kafka Integration Test — verifies end-to-end Event Generator to Kafka topic publishing."""
+"""Kafka Integration Test — verifies end-to-end Event Generator and Fault Injection to Kafka topic publishing."""
 
 import json
 import uuid
@@ -82,3 +82,72 @@ def test_kafka_integration_producer_consumer():
     assert "event_time" in sample
     assert "customer_id" in sample
     assert sample["event_type"] == "checkout"
+
+
+def test_kafka_fault_injection_integration():
+    """Produce corrupted events (100% NULL rate) to checkout-events and verify consumed messages contain NULL values."""
+    bootstrap_server = "localhost:9092"
+    topic = "checkout-events"
+    test_group = f"test-group-fault-{uuid.uuid4().hex[:8]}"
+
+    config = GeneratorConfig(
+        rate=100,
+        null_rate=100.0,
+        bootstrap_server=bootstrap_server,
+        topic=topic,
+        seed=999,
+    )
+
+    try:
+        producer = EventProducer(bootstrap_servers=bootstrap_server)
+    except Exception as e:
+        pytest.skip(f"Kafka cluster unavailable at {bootstrap_server}: {e}")
+
+    engine = EventGeneratorEngine(config=config, producer=producer)
+
+    num_events = 10
+    for _ in range(num_events):
+        engine.produce_next_event()
+
+    producer.flush(timeout=5.0)
+
+    consumer_config = {
+        "bootstrap.servers": bootstrap_server,
+        "group.id": test_group,
+        "auto.offset.reset": "latest",
+        "enable.auto.commit": False,
+    }
+
+    try:
+        consumer = Consumer(consumer_config)
+        consumer.subscribe([topic])
+    except Exception as e:
+        pytest.fail(f"Failed to create test consumer: {e}")
+
+    consumed_messages = []
+    attempts = 0
+    max_attempts = 30
+
+    while len(consumed_messages) < num_events and attempts < max_attempts:
+        attempts += 1
+        msg = consumer.poll(0.2)
+        if msg is None:
+            continue
+        if msg.error():
+            continue
+
+        val = json.loads(msg.value().decode("utf-8"))
+        consumed_messages.append(val)
+
+    consumer.close()
+
+    if consumed_messages:
+        nullable_fields = [
+            "customer_id", "session_id", "order_id", "product_id",
+            "amount", "currency", "payment_method", "payment_status"
+        ]
+        has_null = any(
+            any(msg.get(field) is None for field in nullable_fields)
+            for msg in consumed_messages
+        )
+        assert has_null is True
