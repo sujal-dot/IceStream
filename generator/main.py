@@ -8,8 +8,10 @@ from typing import Optional
 
 from generator.config import GeneratorConfig, parse_args
 from generator.event_generator import EventGeneratorEngine
+from generator.metrics import GeneratorMetricsTracker, start_generator_metrics_server
 from generator.producer import EventProducer
 from generator.utils import RateLimiter, StatsTracker
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,6 +39,9 @@ def run_generator(config: GeneratorConfig):
     signal.signal(signal.SIGINT, _signal_handler)
     signal.signal(signal.SIGTERM, _signal_handler)
 
+    # Start Prometheus metrics server
+    start_generator_metrics_server(config.metrics_port)
+
     stats_tracker = StatsTracker()
     print(
         stats_tracker.format_stats_header(
@@ -47,6 +52,7 @@ def run_generator(config: GeneratorConfig):
                 "error_rate": config.error_rate,
                 "error_types": config.error_types,
                 "seed": config.seed,
+                "metrics_port": config.metrics_port,
             }
         )
     )
@@ -80,7 +86,9 @@ def run_generator(config: GeneratorConfig):
                     injected_errors=producer.injected_error_count,
                 )
                 print(stats_tracker.format_stats_log(stats))
+                GeneratorMetricsTracker.update_producer_rate(stats["current_rate"])
                 last_log_time = now
+
 
             # Check if duration limit reached
             if config.duration and (now - stats_tracker.start_time) >= config.duration:

@@ -169,6 +169,9 @@ services:
       start_period: 10s
     networks:
       - icestream-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
 
   # ----------------------------------------------------------------------------
   # Grafana - Infrastructure Metrics Visualization Dashboard

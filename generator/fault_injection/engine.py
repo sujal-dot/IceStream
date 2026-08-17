@@ -122,7 +122,14 @@ class FaultInjectionEngine:
         strategy = self.strategies[selected_mode]
         mutated_event = strategy.mutate(event_dict, self._rnd)
 
-        # Update stats
+        # Update stats and Prometheus metrics
         self.statistics.record_event(fault_mode=selected_mode)
+        try:
+            from generator.metrics import GeneratorMetricsTracker
+
+            GeneratorMetricsTracker.record_fault(selected_mode)
+        except Exception:
+            pass
 
         return mutated_event, True, selected_mode
+

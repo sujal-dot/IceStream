@@ -32,6 +32,8 @@ class GeneratorConfig:
     seed: Optional[int] = None
     duration: Optional[float] = None  # Seconds, None or <=0 means run continuously
     log_interval: float = 1.0  # Seconds between statistics log output
+    metrics_port: int = 8000  # Prometheus HTTP metrics port
+
 
     # Day 5 Individual Fault Rates (Percentages: 1.0 = 1%, 0.5 = 0.5%)
     null_rate: Optional[float] = None
@@ -202,6 +204,12 @@ def parse_args(args: Optional[List[str]] = None) -> GeneratorConfig:
         default=1.0,
         help="Interval in seconds between throughput statistics logs (default: 1.0)",
     )
+    parser.add_argument(
+        "--metrics-port",
+        type=int,
+        default=8000,
+        help="Prometheus metrics HTTP server port (default: 8000)",
+    )
 
     # Day 5 Specific CLI Flags
     parser.add_argument(
@@ -312,7 +320,9 @@ def parse_args(args: Optional[List[str]] = None) -> GeneratorConfig:
         seed=parsed.seed,
         duration=parsed.duration,
         log_interval=parsed.log_interval,
+        metrics_port=parsed.metrics_port,
         null_rate=parsed.null_rate,
+
         duplicate_rate=parsed.duplicate_rate,
         negative_rate=parsed.negative_rate,
         invalid_enum_rate=parsed.invalid_enum_rate,

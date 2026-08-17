@@ -1,12 +1,20 @@
 # Prometheus Configuration for IceStream Infrastructure
 global:
-  scrape_interval: 15s
-  evaluation_interval: 15s
+  scrape_interval: 2s
+  evaluation_interval: 2s
 
 scrape_configs:
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
+
+  - job_name: 'icestream-generator'
+    static_configs:
+      - targets: ['host.docker.internal:8000']
+
+  - job_name: 'icestream-consumer'
+    static_configs:
+      - targets: ['host.docker.internal:8001']
 
   - job_name: 'flink-jobmanager'
     metrics_path: '/v1/metrics'
@@ -21,3 +29,4 @@ scrape_configs:
   - job_name: 'grafana'
     static_configs:
       - targets: ['grafana:3000']
+
