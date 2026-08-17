@@ -1,0 +1,96 @@
+{
+  "schema_version": "v2",
+  "description": "Compatible IceStream Checkout Event Schema with optional coupon_code and device_model fields",
+  "fields": {
+    "event_id": {
+      "type": "string",
+      "required": true
+    },
+    "event_time": {
+      "type": "timestamp",
+      "required": true
+    },
+    "event_type": {
+      "type": "string",
+      "required": true
+    },
+    "customer_id": {
+      "type": "string",
+      "required": true
+    },
+    "session_id": {
+      "type": "string",
+      "required": true
+    },
+    "order_id": {
+      "type": "string",
+      "required": true
+    },
+    "product_id": {
+      "type": "string",
+      "required": true
+    },
+    "quantity": {
+      "type": "integer",
+      "required": true
+    },
+    "unit_price": {
+      "type": "float",
+      "required": true
+    },
+    "amount": {
+      "type": "float",
+      "required": true
+    },
+    "currency": {
+      "type": "string",
+      "required": true
+    },
+    "payment_method": {
+      "type": "string",
+      "required": true,
+      "enum": [
+        "UPI",
+        "CREDIT_CARD",
+        "DEBIT_CARD",
+        "NET_BANKING",
+        "WALLET",
+        "COD"
+      ]
+    },
+    "payment_status": {
+      "type": "string",
+      "required": true,
+      "enum": [
+        "SUCCESS",
+        "FAILED",
+        "PENDING",
+        "REFUNDED"
+      ]
+    },
+    "device": {
+      "type": "string",
+      "required": true
+    },
+    "device_model": {
+      "type": "string",
+      "required": false
+    },
+    "country": {
+      "type": "string",
+      "required": true
+    },
+    "coupon_code": {
+      "type": "string",
+      "required": false
+    },
+    "source": {
+      "type": "string",
+      "required": true
+    },
+    "source_version": {
+      "type": "string",
+      "required": true
+    }
+  }
+}
