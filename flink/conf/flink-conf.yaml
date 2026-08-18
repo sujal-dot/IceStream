@@ -1,0 +1,53 @@
+# ==============================================================================
+# IceStream - Apache Flink S3 & Cluster Configuration Specification
+# ==============================================================================
+# Flink Release: 1.18.1
+# Storage Layer: MinIO S3-Compatible Object Store
+# ==============================================================================
+
+# Cluster RPC Configuration
+jobmanager.rpc.address: flink-jobmanager
+jobmanager.rpc.port: 6123
+jobmanager.memory.process.size: 1600m
+
+taskmanager.numberOfTaskSlots: 2
+taskmanager.memory.process.size: 1728m
+
+# Blob Manager Configuration
+blob.server.port: 6124
+query.server.port: 6125
+
+# Web Interface Configuration
+rest.port: 8081
+rest.address: 0.0.0.0
+
+# ------------------------------------------------------------------------------
+# MinIO S3 Filesystem Plugin Configuration (flink-s3-fs-hadoop)
+# ------------------------------------------------------------------------------
+# S3 Endpoint & Network Settings (Docker internal service name: minio)
+s3.endpoint: http://minio:9000
+s3.path.style.access: true
+s3.ssl.enabled: false
+s3.region: us-east-1
+
+# S3 Access Credentials
+s3.access-key: icestream_minio
+s3.secret-key: icestream_minio_secret
+
+# Hadoop S3A Compatibility Definitions (fs.s3a.*)
+fs.s3a.endpoint: http://minio:9000
+fs.s3a.path.style.access: true
+fs.s3a.ssl.enabled: false
+fs.s3a.access.key: icestream_minio
+fs.s3a.secret.key: icestream_minio_secret
+
+# ------------------------------------------------------------------------------
+# State Backend & Checkpointing Target Configuration (Phase 3 Target)
+# ------------------------------------------------------------------------------
+state.backend: filesystem
+state.checkpoints.dir: s3://checkpoints/flink/
+state.savepoints.dir: s3://checkpoints/flink-savepoints/
+
+# Environment Plugins
+containerized.master.env.ENABLE_BUILT_IN_PLUGINS: flink-s3-fs-hadoop-1.18.1.jar
+containerized.taskmanager.env.ENABLE_BUILT_IN_PLUGINS: flink-s3-fs-hadoop-1.18.1.jar

@@ -15,15 +15,19 @@ By combining stream processing with lakehouse table formats, real-time circuit b
 
 ## 2. Project Status
 
-> **CURRENT STATUS**: **Phase 2 — Streaming Data Generation**
+> **CURRENT STATUS**: **Phase 3 — Lakehouse**
 
-- **Day 1 — Architecture** ✓
-- **Day 2 — Docker Infrastructure** ✓
-- **Day 3 — Kafka Architecture** ✓
-- **Day 4 — Event Generator** ✓
-- **Day 5 — Fault Injection Engine** ✓
-- **Day 6 — Schema Versioning** ✓
-- **Day 7 — Kafka Testing + Week 1 Checkpoint** ✓
+- **Phase 1 — Architecture & Environment**
+  - **Day 1 — Architecture** ✓
+  - **Day 2 — Docker Infrastructure** ✓
+  - **Day 3 — Kafka Architecture** ✓
+  - **Day 4 — Event Generator** ✓
+  - **Day 5 — Fault Injection Engine** ✓
+  - **Day 6 — Schema Versioning** ✓
+  - **Day 7 — Kafka Testing + Week 1 Checkpoint** ✓
+- **Phase 3 — Lakehouse**
+  - **Day 8 — MinIO Object Storage** ✓
+  - **Day 9 — Apache Iceberg — Upcoming**
 
 - **Implemented on Day 1**: Project architecture specifications, repository directory layout, component documentation, failure resilience matrices, recovery workflow specifications, configuration placeholders, and system diagrams.
 - **Implemented on Day 2**: Local Docker Compose infrastructure orchestrating Kafka (KRaft), MinIO, PostgreSQL, Flink (JobManager & TaskManager), Prometheus, and Grafana with native container health checks.
@@ -34,6 +38,7 @@ By combining stream processing with lakehouse table formats, real-time circuit b
 - **Implemented on Day 6**: Schema Versioning & Schema Compatibility Engine (`schema/`), versioned JSON schema contracts (`v1.json`, `v2.json`, `v3.json`), schema loader & validation engine (`loader.py`), schema registry abstraction (`registry.py`), compatibility classification engine (`compatibility.py`), CLI comparison utility (`schema/compare.py`), documentation (`schema/README.md`, `docs/schema-evolution.md`), and unit test suite (`tests/schema/`).
   *Note: Evaluates schema evolutions as COMPATIBLE or BREAKING with granular severity and reason breakdowns.*
 - **Implemented on Day 7 (Week 1 Checkpoint)**: Kafka streaming observability and dedicated benchmark consumer (`scripts/kafka/performance_consumer.py`), real-time throughput tracking, end-to-end latency measurement (p50, p95, p99), real Kafka consumer lag per partition, Prometheus metrics exporter integration (ports 8000 & 8001), automated Grafana dashboard provisioning (`IceStream — Week 1 Streaming Overview`), automated checkpoint validation runner (`scripts/week1_checkpoint.py`), performance report (`docs/week1-performance-report.md`), and demo documentation (`docs/week1-demo.md`).
+- **Implemented on Day 8**: MinIO S3-compatible object storage infrastructure setup, bucket initialization (`warehouse`, `checkpoints`, `schemas`, `logs`), Flink S3 filesystem plugin configuration (`flink-s3-fs-hadoop`), Flink → MinIO end-to-end object write & read-back verification test (`scripts/flink/test_minio.sh`), bucket management & verification scripts (`scripts/minio/init_buckets.sh`, `scripts/minio/verify_storage.sh`, `scripts/minio/upload_schemas.sh`), storage architecture documentation (`docs/minio-storage.md`), and Pytest test suite (`tests/minio/test_minio_storage.py`).
 
 ---
 

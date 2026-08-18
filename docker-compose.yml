@@ -109,8 +109,28 @@ services:
     ports:
       - "8081:8081"
     environment:
+      ENABLE_BUILT_IN_PLUGINS: "flink-s3-fs-hadoop-1.18.1.jar"
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
+        s3.endpoint: http://minio:9000
+        s3.path.style.access: true
+        s3.access-key: ${MINIO_ROOT_USER:-icestream_minio}
+        s3.secret-key: ${MINIO_ROOT_PASSWORD:-icestream_minio_secret}
+        s3.ssl.enabled: false
+        s3.region: us-east-1
+        s3a.endpoint: http://minio:9000
+        s3a.path.style.access: true
+        s3a.access-key: ${MINIO_ROOT_USER:-icestream_minio}
+        s3a.secret-key: ${MINIO_ROOT_PASSWORD:-icestream_minio_secret}
+        s3a.ssl.enabled: false
+        fs.s3a.endpoint: http://minio:9000
+        fs.s3a.path.style.access: true
+        fs.s3a.access.key: ${MINIO_ROOT_USER:-icestream_minio}
+        fs.s3a.secret.key: ${MINIO_ROOT_PASSWORD:-icestream_minio_secret}
+        fs.s3a.ssl.enabled: false
+    depends_on:
+      minio:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8081/v1/overview || exit 1"]
       interval: 10s
@@ -129,11 +149,30 @@ services:
     restart: unless-stopped
     command: taskmanager
     environment:
+      ENABLE_BUILT_IN_PLUGINS: "flink-s3-fs-hadoop-1.18.1.jar"
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
         taskmanager.numberOfTaskSlots: 2
+        s3.endpoint: http://minio:9000
+        s3.path.style.access: true
+        s3.access-key: ${MINIO_ROOT_USER:-icestream_minio}
+        s3.secret-key: ${MINIO_ROOT_PASSWORD:-icestream_minio_secret}
+        s3.ssl.enabled: false
+        s3.region: us-east-1
+        s3a.endpoint: http://minio:9000
+        s3a.path.style.access: true
+        s3a.access-key: ${MINIO_ROOT_USER:-icestream_minio}
+        s3a.secret-key: ${MINIO_ROOT_PASSWORD:-icestream_minio_secret}
+        s3a.ssl.enabled: false
+        fs.s3a.endpoint: http://minio:9000
+        fs.s3a.path.style.access: true
+        fs.s3a.access.key: ${MINIO_ROOT_USER:-icestream_minio}
+        fs.s3a.secret.key: ${MINIO_ROOT_PASSWORD:-icestream_minio_secret}
+        fs.s3a.ssl.enabled: false
     depends_on:
       flink-jobmanager:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -s http://flink-jobmanager:8081/v1/taskmanagers | grep -q 'taskmanagers' || exit 1"]
