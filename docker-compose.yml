@@ -75,6 +75,38 @@ services:
       - icestream-network
 
   # ----------------------------------------------------------------------------
+  # Apache Iceberg REST Catalog Service
+  # ----------------------------------------------------------------------------
+  iceberg-rest:
+    image: tabulario/iceberg-rest:0.1.0
+    container_name: icestream-iceberg-rest
+    restart: unless-stopped
+    ports:
+      - "8181:8181"
+    environment:
+      CATALOG_NAME: icestream
+      CATALOG_WAREHOUSE: s3://warehouse/
+      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
+      CATALOG_S3_ENDPOINT: http://minio:9000
+      CATALOG_S3_PATH__STYLE__ACCESS: "true"
+      CATALOG_S3_ACCESS__KEY__ID: ${MINIO_ROOT_USER:-icestream_minio}
+      CATALOG_S3_SECRET__ACCESS__KEY: ${MINIO_ROOT_PASSWORD:-icestream_minio_secret}
+      AWS_REGION: ${MINIO_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-icestream_minio}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-icestream_minio_secret}
+    depends_on:
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8181/v1/config || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - icestream-network
+
+  # ----------------------------------------------------------------------------
   # PostgreSQL - Operational Metadata & Incident Log Database
   # ----------------------------------------------------------------------------
   postgres:
@@ -110,6 +142,9 @@ services:
       - "8081:8081"
     environment:
       ENABLE_BUILT_IN_PLUGINS: "flink-s3-fs-hadoop-1.18.1.jar"
+      AWS_REGION: ${MINIO_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-icestream_minio}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-icestream_minio_secret}
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
         s3.endpoint: http://minio:9000
@@ -137,6 +172,10 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+    volumes:
+      - ./flink/lib/iceberg-flink-runtime-1.18-1.5.2.jar:/opt/flink/lib/iceberg-flink-runtime-1.18-1.5.2.jar:ro
+      - ./flink/lib/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar:/opt/flink/lib/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar:ro
+      - ./flink/lib/iceberg-aws-bundle-1.5.2.jar:/opt/flink/lib/iceberg-aws-bundle-1.5.2.jar:ro
     networks:
       - icestream-network
 
@@ -150,6 +189,9 @@ services:
     command: taskmanager
     environment:
       ENABLE_BUILT_IN_PLUGINS: "flink-s3-fs-hadoop-1.18.1.jar"
+      AWS_REGION: ${MINIO_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-icestream_minio}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-icestream_minio_secret}
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
         taskmanager.numberOfTaskSlots: 2
@@ -180,6 +222,10 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+    volumes:
+      - ./flink/lib/iceberg-flink-runtime-1.18-1.5.2.jar:/opt/flink/lib/iceberg-flink-runtime-1.18-1.5.2.jar:ro
+      - ./flink/lib/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar:/opt/flink/lib/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar:ro
+      - ./flink/lib/iceberg-aws-bundle-1.5.2.jar:/opt/flink/lib/iceberg-aws-bundle-1.5.2.jar:ro
     networks:
       - icestream-network
 

@@ -100,3 +100,7 @@ grafana-data/
 logs/
 tmp/
 temp/
+
+# JAR Binaries
+*.jar
+flink/lib/
