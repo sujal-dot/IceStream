@@ -25,10 +25,11 @@ By combining stream processing with lakehouse table formats, real-time circuit b
   - **Day 5 — Fault Injection Engine** ✓
   - **Day 6 — Schema Versioning** ✓
   - **Day 7 — Kafka Testing + Week 1 Checkpoint** ✓
-- **Phase 3 — Lakehouse**
+- **Phase 3 — LAKEHOUSE**
   - **Day 8 — MinIO Object Storage** ✓
-  - **Day 9 — Apache Iceberg Catalog** ✓
-  - **Day 10 — Bronze Streaming Ingestion — Upcoming**
+  - **Day 9 — Iceberg Catalog** ✓
+  - **Day 10 — Bronze Iceberg Table** ✓
+  - **Day 11 — Bronze Streaming Ingestion — Upcoming**
 
 - **Implemented on Day 1**: Project architecture specifications, repository directory layout, component documentation, failure resilience matrices, recovery workflow specifications, configuration placeholders, and system diagrams.
 - **Implemented on Day 2**: Local Docker Compose infrastructure orchestrating Kafka (KRaft), MinIO, PostgreSQL, Flink (JobManager & TaskManager), Prometheus, and Grafana with native container health checks.
@@ -41,6 +42,7 @@ By combining stream processing with lakehouse table formats, real-time circuit b
 - **Implemented on Day 7 (Week 1 Checkpoint)**: Kafka streaming observability and dedicated benchmark consumer (`scripts/kafka/performance_consumer.py`), real-time throughput tracking, end-to-end latency measurement (p50, p95, p99), real Kafka consumer lag per partition, Prometheus metrics exporter integration (ports 8000 & 8001), automated Grafana dashboard provisioning (`IceStream — Week 1 Streaming Overview`), automated checkpoint validation runner (`scripts/week1_checkpoint.py`), performance report (`docs/week1-performance-report.md`), and demo documentation (`docs/week1-demo.md`).
 - **Implemented on Day 8**: MinIO S3-compatible object storage infrastructure setup, bucket initialization (`warehouse`, `checkpoints`, `schemas`, `logs`), Flink S3 filesystem plugin configuration (`flink-s3-fs-hadoop`), Flink → MinIO end-to-end object write & read-back verification test (`scripts/flink/test_minio.sh`), bucket management & verification scripts (`scripts/minio/init_buckets.sh`, `scripts/minio/verify_storage.sh`, `scripts/minio/upload_schemas.sh`), storage architecture documentation (`docs/minio-storage.md`), and Pytest test suite (`tests/minio/test_minio_storage.py`).
 - **Implemented on Day 9**: Apache Iceberg REST Catalog (`tabulario/iceberg-rest`), MinIO-backed lakehouse storage (`s3://warehouse/`), 4 core Iceberg catalog namespaces (`bronze`, `silver`, `quarantine`, `audit`), representative Iceberg table definitions (`bronze.checkout_events`, `silver.valid_checkout_events`, `quarantine.invalid_checkout_events`, `audit.data_quality_results`), Flink Iceberg runtime & AWS bundle JAR integration (`iceberg-flink-runtime-1.18-1.5.2.jar`, `iceberg-aws-bundle-1.5.2.jar`), Flink SQL catalog connectivity, Flink table write & read-back proof, catalog/MinIO restart persistence verification, initialization and verification scripts (`scripts/iceberg/init_catalog.py`, `scripts/iceberg/verify_catalog.py`), documentation (`docs/iceberg-catalog.md`), and Pytest test suite (`tests/iceberg/`).
+- **Implemented on Day 10**: Production foundation Bronze Iceberg table (`icestream.bronze.checkout_events`), 14-field production schema contract (`DECIMAL(18,2)`, `TIMESTAMP`, `source_version`, `ingestion_time`), Parquet physical storage format (`write.format.default = parquet`), Iceberg format version 2 (`format-version = 2`), MinIO-backed warehouse storage (`s3://warehouse/bronze/checkout_events`), Flink SQL insert & read-back verification, raw event preservation with nullable fields for fault injection capture, reproducibile creation script (`scripts/iceberg/create_bronze_table.py`), inspection & verification script (`scripts/iceberg/verify_bronze_table.py`), Day 10 checkpoint script (`scripts/day10_checkpoint.sh`), technical documentation (`docs/bronze-table.md`), and Pytest integration suite (`tests/iceberg/test_bronze_table.py`).
 
 ---
 

@@ -12,6 +12,7 @@ from pyiceberg.exceptions import NamespaceAlreadyExistsError, TableAlreadyExists
 from iceberg.config.catalog import get_catalog
 from iceberg.schemas.table_schemas import (
     BRONZE_CHECKOUT_EVENTS_SCHEMA,
+    BRONZE_TABLE_PROPERTIES,
     SILVER_VALID_CHECKOUT_EVENTS_SCHEMA,
     QUARANTINE_INVALID_CHECKOUT_EVENTS_SCHEMA,
     AUDIT_DATA_QUALITY_RESULTS_SCHEMA,
@@ -19,10 +20,10 @@ from iceberg.schemas.table_schemas import (
 
 NAMESPACES = ["bronze", "silver", "quarantine", "audit"]
 TABLE_DEFINITIONS = [
-    ("bronze", "checkout_events", BRONZE_CHECKOUT_EVENTS_SCHEMA),
-    ("silver", "valid_checkout_events", SILVER_VALID_CHECKOUT_EVENTS_SCHEMA),
-    ("quarantine", "invalid_checkout_events", QUARANTINE_INVALID_CHECKOUT_EVENTS_SCHEMA),
-    ("audit", "data_quality_results", AUDIT_DATA_QUALITY_RESULTS_SCHEMA),
+    ("bronze", "checkout_events", BRONZE_CHECKOUT_EVENTS_SCHEMA, BRONZE_TABLE_PROPERTIES),
+    ("silver", "valid_checkout_events", SILVER_VALID_CHECKOUT_EVENTS_SCHEMA, {}),
+    ("quarantine", "invalid_checkout_events", QUARANTINE_INVALID_CHECKOUT_EVENTS_SCHEMA, {}),
+    ("audit", "data_quality_results", AUDIT_DATA_QUALITY_RESULTS_SCHEMA, {}),
 ]
 
 
@@ -48,19 +49,28 @@ def init_catalog():
     print()
 
     # 2. Create tables
-    for ns, table_name, schema in TABLE_DEFINITIONS:
+    for ns, table_name, schema, properties in TABLE_DEFINITIONS:
         identifier = f"{ns}.{table_name}"
         try:
-            catalog.create_table(identifier, schema=schema)
-            table_status = "✓"
-        except TableAlreadyExistsError:
-            table_status = "✓ (exists)"
+            if catalog.table_exists(identifier):
+                tbl = catalog.load_table(identifier)
+                # If schema fields don't match Day 10 definition for bronze, drop and recreate safely
+                if identifier == "bronze.checkout_events" and len(tbl.schema().fields) != len(schema.fields):
+                    catalog.drop_table(identifier)
+                    catalog.create_table(identifier, schema=schema, properties=properties)
+                    table_status = "✓ (recreated to match Day 10 contract)"
+                else:
+                    table_status = "✓ (exists)"
+            else:
+                catalog.create_table(identifier, schema=schema, properties=properties)
+                table_status = "✓"
         except Exception as e:
             table_status = f"✗ ({e})"
         print(f"Table {identifier:<40} {table_status}")
 
     print()
     print("Catalog initialization complete.")
+
 
 
 if __name__ == "__main__":
