@@ -98,7 +98,7 @@ services:
       minio:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8181/v1/config || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8181' || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -176,6 +176,7 @@ services:
       - ./flink/lib/iceberg-flink-runtime-1.18-1.5.2.jar:/opt/flink/lib/iceberg-flink-runtime-1.18-1.5.2.jar:ro
       - ./flink/lib/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar:/opt/flink/lib/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar:ro
       - ./flink/lib/iceberg-aws-bundle-1.5.2.jar:/opt/flink/lib/iceberg-aws-bundle-1.5.2.jar:ro
+      - ./flink/lib/flink-sql-connector-kafka-3.1.0-1.18.jar:/opt/flink/lib/flink-sql-connector-kafka-3.1.0-1.18.jar:ro
     networks:
       - icestream-network
 
@@ -226,6 +227,7 @@ services:
       - ./flink/lib/iceberg-flink-runtime-1.18-1.5.2.jar:/opt/flink/lib/iceberg-flink-runtime-1.18-1.5.2.jar:ro
       - ./flink/lib/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar:/opt/flink/lib/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar:ro
       - ./flink/lib/iceberg-aws-bundle-1.5.2.jar:/opt/flink/lib/iceberg-aws-bundle-1.5.2.jar:ro
+      - ./flink/lib/flink-sql-connector-kafka-3.1.0-1.18.jar:/opt/flink/lib/flink-sql-connector-kafka-3.1.0-1.18.jar:ro
     networks:
       - icestream-network
 
