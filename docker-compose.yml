@@ -163,6 +163,12 @@ services:
         fs.s3a.access.key: ${MINIO_ROOT_USER:-icestream_minio}
         fs.s3a.secret.key: ${MINIO_ROOT_PASSWORD:-icestream_minio_secret}
         fs.s3a.ssl.enabled: false
+        state.backend: filesystem
+        state.checkpoints.dir: s3://checkpoints/flink/
+        state.savepoints.dir: s3://checkpoints/flink-savepoints/
+        restart-strategy.type: fixed-delay
+        restart-strategy.fixed-delay.attempts: ${FLINK_RESTART_ATTEMPTS:-3}
+        restart-strategy.fixed-delay.delay: ${FLINK_RESTART_DELAY_SECONDS:-10}s
     depends_on:
       minio:
         condition: service_healthy
@@ -212,6 +218,12 @@ services:
         fs.s3a.access.key: ${MINIO_ROOT_USER:-icestream_minio}
         fs.s3a.secret.key: ${MINIO_ROOT_PASSWORD:-icestream_minio_secret}
         fs.s3a.ssl.enabled: false
+        state.backend: filesystem
+        state.checkpoints.dir: s3://checkpoints/flink/
+        state.savepoints.dir: s3://checkpoints/flink-savepoints/
+        restart-strategy.type: fixed-delay
+        restart-strategy.fixed-delay.attempts: ${FLINK_RESTART_ATTEMPTS:-3}
+        restart-strategy.fixed-delay.delay: ${FLINK_RESTART_DELAY_SECONDS:-10}s
     depends_on:
       flink-jobmanager:
         condition: service_healthy

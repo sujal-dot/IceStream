@@ -39,18 +39,27 @@ CREATE TABLE IF NOT EXISTS checkout_events (
   ingestion_time TIMESTAMP(3)
 );
 
--- 3. Configure Streaming Runtime & Checkpointing Settings
+-- 3. Configure Streaming Runtime, Checkpointing & Restart Strategy Settings
 SET 'execution.runtime-mode' = 'streaming';
+SET 'table.dml-sync' = 'false';
 SET 'execution.checkpointing.interval' = '30000ms';
 SET 'execution.checkpointing.mode' = 'EXACTLY_ONCE';
 SET 'execution.checkpointing.timeout' = '60000ms';
 SET 'execution.checkpointing.min-pause' = '500ms';
 SET 'execution.checkpointing.max-concurrent-checkpoints' = '1';
 SET 'state.checkpoints.dir' = 's3://checkpoints/flink/bronze/';
+SET 'state.backend' = 'filesystem';
+SET 'restart-strategy.type' = 'fixed-delay';
+SET 'restart-strategy.fixed-delay.attempts' = '3';
+SET 'restart-strategy.fixed-delay.delay' = '10s';
 SET 'table.exec.sink.not-null-enforcer' = 'DROP';
 
--- 4. Define Kafka Source Table in default_catalog.default
-CREATE TABLE IF NOT EXISTS default_catalog.default.kafka_checkout_events (
+-- 4. Define Kafka Source Table in default_catalog
+USE CATALOG default_catalog;
+CREATE DATABASE IF NOT EXISTS default_db;
+USE default_db;
+
+CREATE TABLE IF NOT EXISTS kafka_checkout_events (
   event_id STRING,
   event_time STRING,
   customer_id STRING,
@@ -94,5 +103,5 @@ SELECT
   country,
   source_version,
   LOCALTIMESTAMP AS ingestion_time
-FROM default_catalog.default.kafka_checkout_events
+FROM default_catalog.default_db.kafka_checkout_events
 WHERE event_id IS NOT NULL;

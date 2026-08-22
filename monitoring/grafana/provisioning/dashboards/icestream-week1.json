@@ -235,12 +235,83 @@
           "color": { "mode": "palette-classic" }
         }
       }
+    },
+    {
+      "id": 10,
+      "title": "Flink Reliability — Job Manager Health",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 20 },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "expr": "up{job=\"flink-jobmanager\"}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "DOWN", "color": "red" },
+                "1": { "text": "HEALTHY", "color": "green" }
+              }
+            }
+          ],
+          "color": { "mode": "thresholds" }
+        }
+      }
+    },
+    {
+      "id": 11,
+      "title": "Flink Reliability — Completed Checkpoints",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 20 },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "expr": "flink_jobmanager_job_numberOfCompletedCheckpoints",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          }
+        }
+      }
+    },
+    {
+      "id": 12,
+      "title": "Flink Reliability — Checkpoint Duration (ms)",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 20 },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "expr": "flink_jobmanager_job_lastCheckpointDuration",
+          "legendFormat": "Checkpoint Duration (ms)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line"
+          },
+          "unit": "ms"
+        }
+      }
     }
   ],
   "refresh": "2s",
   "schemaVersion": 38,
   "style": "dark",
-  "tags": ["icestream", "week1", "observability"],
+  "tags": ["icestream", "week1", "observability", "flink-reliability"],
   "time": {
     "from": "now-15m",
     "to": "now"

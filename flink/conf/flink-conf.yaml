@@ -48,6 +48,11 @@ state.backend: filesystem
 state.checkpoints.dir: s3://checkpoints/flink/
 state.savepoints.dir: s3://checkpoints/flink-savepoints/
 
+# Restart Strategy Configuration
+restart-strategy.type: fixed-delay
+restart-strategy.fixed-delay.attempts: 3
+restart-strategy.fixed-delay.delay: 10s
+
 # Environment Plugins
 containerized.master.env.ENABLE_BUILT_IN_PLUGINS: flink-s3-fs-hadoop-1.18.1.jar
 containerized.taskmanager.env.ENABLE_BUILT_IN_PLUGINS: flink-s3-fs-hadoop-1.18.1.jar
