@@ -31,7 +31,8 @@ By combining stream processing with lakehouse table formats, real-time circuit b
   - **Day 10 — Bronze Iceberg Table** ✓
   - **Day 11 — Flink → Iceberg Streaming** ✓
   - **Day 12 — Streaming Reliability** ✓
-  - **Day 13 — Silver Layer — Upcoming**
+  - **Day 13 — Apache Iceberg ACID Audit** ✓
+  - **Day 14 — Silver Layer — Upcoming**
 
 - **Implemented on Day 1**: Project architecture specifications, repository directory layout, component documentation, failure resilience matrices, recovery workflow specifications, configuration placeholders, and system diagrams.
 - **Implemented on Day 2**: Local Docker Compose infrastructure orchestrating Kafka (KRaft), MinIO, PostgreSQL, Flink (JobManager & TaskManager), Prometheus, and Grafana with native container health checks.
@@ -47,6 +48,7 @@ By combining stream processing with lakehouse table formats, real-time circuit b
 - **Implemented on Day 10**: Production foundation Bronze Iceberg table (`icestream.bronze.checkout_events`), 14-field production schema contract (`DECIMAL(18,2)`, `TIMESTAMP`, `source_version`, `ingestion_time`), Parquet physical storage format (`write.format.default = parquet`), Iceberg format version 2 (`format-version = 2`), MinIO-backed warehouse storage (`s3://warehouse/bronze/checkout_events`), Flink SQL insert & read-back verification, raw event preservation with nullable fields for fault injection capture, reproducibile creation script (`scripts/iceberg/create_bronze_table.py`), inspection & verification script (`scripts/iceberg/verify_bronze_table.py`), Day 10 checkpoint script (`scripts/day10_checkpoint.sh`), technical documentation (`docs/bronze-table.md`), and Pytest integration suite (`tests/iceberg/test_bronze_table.py`).
 - **Implemented on Day 11**: Real-time Kafka → Flink → Iceberg Bronze streaming pipeline, Flink JSON deserialization, field mapping, event timestamp & watermark strategy, ingestion timestamp generation, checkpointing to MinIO (`s3://checkpoints/flink/bronze/`), Flink SQL streaming DDL/DML definition (`flink/jobs/kafka_to_iceberg.sql`), deployment automation (`scripts/flink/run_bronze_pipeline.sh`), continuous count monitor (`scripts/iceberg/watch_bronze_count.py`), master Day 11 checkpoint runner (`scripts/day11_checkpoint.sh`), documentation (`docs/kafka-flink-iceberg.md`), and streaming integration tests (`tests/streaming/test_kafka_to_iceberg.py`).
 - **Implemented on Day 12**: Streaming reliability infrastructure, Flink `EXACTLY_ONCE` checkpointing (30s interval, `s3://checkpoints/flink/bronze/`), fixed-delay task restart strategy (3 attempts, 10s delay), Kafka consumer offset state recovery (`icestream-flink-bronze`), automated TaskManager failure and recovery test script (`scripts/day12_recovery_test.sh`), technical documentation (`docs/flink-reliability.md`), Grafana Flink Reliability panel monitoring, and Pytest reliability test suite (`tests/streaming/test_reliability.py`).
+- **Implemented on Day 13**: Apache Iceberg ACID Concurrency & Durability Audit (`scripts/day13_acid_audit.py`, `tests/acid/`), empirical validation of Atomicity (500/500 records all-or-nothing), Consistency (schema & manifest fidelity), Snapshot Isolation (Reader C continuous query without locks or failures), and Optimistic Concurrency Control (Writer A & B concurrent append with collision backoff/retry), catalog restart durability proof, technical documentation (`docs/acid-audit.md`), execution results report (`docs/reports/day13-acid-results.md`), and Pytest concurrency suite (`tests/acid/test_acid_audit.py`).
 
 ---
 

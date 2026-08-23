@@ -91,6 +91,7 @@ services:
       CATALOG_S3_PATH__STYLE__ACCESS: "true"
       CATALOG_S3_ACCESS__KEY__ID: ${MINIO_ROOT_USER:-icestream_minio}
       CATALOG_S3_SECRET__ACCESS__KEY: ${MINIO_ROOT_PASSWORD:-icestream_minio_secret}
+      CATALOG_URI: "jdbc:sqlite:/tmp/iceberg_rest.db?busy_timeout=10000&journal_mode=WAL"
       AWS_REGION: ${MINIO_REGION:-us-east-1}
       AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-icestream_minio}
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-icestream_minio_secret}
