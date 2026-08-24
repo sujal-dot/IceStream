@@ -104,3 +104,6 @@ temp/
 # JAR Binaries
 *.jar
 flink/lib/
+
+# Local Audit Artifacts
+artifacts/

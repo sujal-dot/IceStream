@@ -1,0 +1,7 @@
+# IceStream Quality Engine Rule Configuration
+# Day 14 Architecture Foundation
+
+rules:
+  - name: event_id_not_null
+    enabled: true
+    severity: CRITICAL
