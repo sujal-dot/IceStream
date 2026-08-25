@@ -1,12 +1,10 @@
 """Quality Engine CLI Entry Point & Demonstration Runner.
 
 Demonstrates:
-1. Loading configuration from YAML.
-2. Initializing the RuleRegistry and registering quality rules.
-3. Constructing QualityEngine instance.
-4. Validating a valid checkout event.
-5. Validating an invalid checkout event (null event_id).
-6. Displaying structured validation results and health status summaries.
+1. Loading Day 15 configuration from rules.yaml.
+2. Initializing RuleRegistry with registered quality rules.
+3. Executing QualityEngine against valid and invalid events.
+4. Displaying structured validation results and health status summaries.
 """
 
 import argparse
@@ -21,17 +19,17 @@ if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 
 from config.loader import load_rule_config
-from rules.base import EventIdNotNullRule, EventStatus, Severity
+from rules.base import EventStatus, Severity
 from rules.engine import QualityEngine
-from rules.registry import RuleRegistry
+from rules.registry import create_default_registry
 from schemas.event import QualityEvent
 
 
 def build_sample_valid_event() -> QualityEvent:
     """Construct a clean, valid sample checkout event."""
     return QualityEvent(
-        event_id="evt_demo_001",
-        event_time="2026-08-24T10:00:00Z",
+        event_id="evt_day15_demo",
+        event_time="2026-08-25T10:00:00.000Z",
         customer_id="CUST_1001",
         session_id="SESS_9001",
         order_id="ORD_5001",
@@ -42,47 +40,44 @@ def build_sample_valid_event() -> QualityEvent:
         currency="INR",
         payment_method="UPI",
         payment_status="SUCCESS",
-        device="MOBILE_IOS",
+        device="mobile",
         country="IN",
         source="checkout-service",
         source_version="v1",
-        ingestion_time="2026-08-24T10:00:01Z",
+        ingestion_time="2026-08-25T10:00:01.000Z",
     )
 
 
 def build_sample_invalid_event() -> QualityEvent:
-    """Construct an invalid sample checkout event with null event_id."""
+    """Construct a heavily corrupted checkout event with multiple rule failures."""
     return QualityEvent(
-        event_id=None,
-        event_time="2026-08-24T10:00:02Z",
+        event_id="evt_day15_bad",
+        event_time="2026-08-25T10:00:02.000Z",
         customer_id="CUST_1002",
         session_id="SESS_9002",
         order_id="ORD_5002",
         product_id="PROD_3002",
-        quantity=1,
-        unit_price=499.00,
-        amount=499.00,
-        currency="INR",
-        payment_method="CREDIT_CARD",
-        payment_status="SUCCESS",
-        device="DESKTOP_WEB",
+        amount=-500.00,  # Fails amount_positive
+        currency="XYZ",  # Fails currency_valid
+        payment_method=None,  # Fails payment_method_not_null
+        payment_status="UNKNOWN",  # Fails payment_status_valid
+        device="desktop",
         country="IN",
         source="checkout-service",
         source_version="v1",
-        ingestion_time="2026-08-24T10:00:03Z",
+        ingestion_time="invalid_timestamp",  # Fails ingestion_time_valid
     )
 
 
 def run_demonstration(config_path: Optional[str] = None) -> int:
     """Run full demonstration workflow."""
     print("========================================")
-    print("IceStream Quality Engine")
+    print("IceStream Quality Engine — Day 15")
     print("========================================")
     print()
 
     # 1. Initialize Registry
-    registry = RuleRegistry()
-    registry.register(EventIdNotNullRule())
+    registry = create_default_registry()
 
     # 2. Load Configuration if provided or default
     default_cfg_path = os.path.join(SCRIPT_DIR, "config", "rules.yaml")
@@ -90,14 +85,11 @@ def run_demonstration(config_path: Optional[str] = None) -> int:
 
     if cfg_to_load and os.path.exists(cfg_to_load):
         load_rule_config(cfg_to_load, registry=registry)
-        print(f"Loaded config from: {cfg_to_load}")
+        print(f"Loaded configuration from: {cfg_to_load}")
     else:
         print("Using default in-memory configuration.")
 
-    print(f"Rules loaded:")
-    print(len(registry.all()))
-    for r in registry.all():
-        print(f"  - {r.name} (enabled={r.enabled}, severity={r.severity.value})")
+    print(f"Rules active: {len(registry.all())}")
     print()
 
     # 3. Create Quality Engine
@@ -105,52 +97,35 @@ def run_demonstration(config_path: Optional[str] = None) -> int:
 
     # 4. Demonstrate Valid Event
     valid_event = build_sample_valid_event()
-    print("----------------------------------------")
-    print("DEMO 1: Valid Event Evaluation")
-    print("----------------------------------------")
-    print(f"Event:")
+    print("Event:")
     print(valid_event.event_id)
     print()
-    print("Validation:")
+    print("Results:")
     results, summary = engine.validate_with_summary(valid_event)
     for res in results:
-        status_str = "PASS" if res.passed else f"FAIL ({res.severity.value})"
+        status_str = "PASSED" if res.passed else f"FAILED  {res.severity.value}"
         print(f"{res.rule_name:<24} {status_str}")
-        print(f"  Message: {res.message}")
     print()
     print("Overall:")
     print(summary.overall_status.value)
     print()
+    print("========================================")
+    print()
 
     # 5. Demonstrate Invalid Event
     invalid_event = build_sample_invalid_event()
-    print("----------------------------------------")
-    print("DEMO 2: Corrupted Event Evaluation (Null event_id)")
-    print("----------------------------------------")
-    print(f"Event:")
-    print(str(invalid_event.event_id))
+    print("Event:")
+    print(invalid_event.event_id)
     print()
-    print("Validation:")
+    print("Results:")
     results_inv, summary_inv = engine.validate_with_summary(invalid_event)
     for res in results_inv:
-        status_str = "PASS" if res.passed else f"FAIL ({res.severity.value})"
+        status_str = "PASSED" if res.passed else f"FAILED  {res.severity.value}"
         print(f"{res.rule_name:<24} {status_str}")
-        print(f"  Message: {res.message}")
     print()
     print("Overall:")
     print(summary_inv.overall_status.value)
     print()
-
-    # 6. Metrics Summary
-    print("----------------------------------------")
-    print("Engine Metrics Snapshot")
-    print("----------------------------------------")
-    metrics_data = engine.metrics.get_metrics()
-    print(json.dumps(metrics_data, indent=2))
-    print()
-
-    print("========================================")
-    print("Demonstration Completed Successfully.")
     print("========================================")
     return 0
 

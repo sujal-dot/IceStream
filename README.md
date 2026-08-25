@@ -34,7 +34,8 @@ By combining stream processing with lakehouse table formats, real-time circuit b
   - **Day 13 — Apache Iceberg ACID Audit** ✓
 - **Phase 4 — OBSERVABILITY ENGINE**
   - **Day 14 — Quality Engine Architecture** ✓
-  - **Day 15 — Silver Layer & Real-time Validation — Upcoming**
+  - **Day 15 — Null + Validity Detection Engine** ✓
+  - **Day 16 — Upcoming**
 
 - **Implemented on Day 1**: Project architecture specifications, repository directory layout, component documentation, failure resilience matrices, recovery workflow specifications, configuration placeholders, and system diagrams.
 - **Implemented on Day 2**: Local Docker Compose infrastructure orchestrating Kafka (KRaft), MinIO, PostgreSQL, Flink (JobManager & TaskManager), Prometheus, and Grafana with native container health checks.
@@ -52,6 +53,7 @@ By combining stream processing with lakehouse table formats, real-time circuit b
 - **Implemented on Day 12**: Streaming reliability infrastructure, Flink `EXACTLY_ONCE` checkpointing (30s interval, `s3://checkpoints/flink/bronze/`), fixed-delay task restart strategy (3 attempts, 10s delay), Kafka consumer offset state recovery (`icestream-flink-bronze`), automated TaskManager failure and recovery test script (`scripts/day12_recovery_test.sh`), technical documentation (`docs/flink-reliability.md`), Grafana Flink Reliability panel monitoring, and Pytest reliability test suite (`tests/streaming/test_reliability.py`).
 - **Implemented on Day 13**: Apache Iceberg ACID Concurrency & Durability Audit (`scripts/day13_acid_audit.py`, `tests/acid/`), empirical validation of Atomicity (500/500 records all-or-nothing), Consistency (schema & manifest fidelity), Snapshot Isolation (Reader C continuous query without locks or failures), and Optimistic Concurrency Control (Writer A & B concurrent append with collision backoff/retry), catalog restart durability proof, technical documentation (`docs/acid-audit.md`), execution results report (`docs/reports/day13-acid-results.md`), and Pytest concurrency suite (`tests/acid/test_acid_audit.py`).
 - **Implemented on Day 14**: Quality Engine Architecture & Rule Interface (`quality-engine/`), standardized event model (`QualityEvent`), `QualityRule` abstract contract (`validate(event)`), uniform `ValidationResult` and `ValidationSummary` models, controlled severity (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`, `INFO`) and status enums (`HEALTHY`, `WARNING`, `FAILED`), dynamic `RuleRegistry` with `@register_rule` decorator, `QualityEngine` rule orchestrator with complete failure isolation and exception handling, declarative YAML configuration loader (`rules.yaml`), demonstration rule (`EventIdNotNullRule`), `MetricsCollector` abstraction, CLI runner (`quality-engine/main.py`), documentation (`docs/quality-engine.md`, `quality-engine/README.md`), and 35 unit tests (`quality-engine/tests/`).
+- **Implemented on Day 15**: Real Data-Quality Rules & Null + Validity Detection Engine (`quality-engine/rules/`), reusable `NotNullRule`, `AmountPositiveRule`, `AllowedValuesRule` (`CurrencyValidRule`, `PaymentStatusValidRule`), `TimestampValidRule`, expanded YAML configuration (`rules.yaml`), generic rule type loader (`config/loader.py`), rule pass/fail result serialization, metrics tracking with low-cardinality rule labels, unit test suite (`quality-engine/tests/test_validity_rules.py`), engine integration suite (`quality-engine/tests/test_quality_engine_day15.py`), and quality rules documentation (`docs/quality-rules.md`).
 
 ---
 

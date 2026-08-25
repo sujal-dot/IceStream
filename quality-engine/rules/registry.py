@@ -4,7 +4,11 @@ import inspect
 import logging
 from typing import Callable, Dict, List, Optional, Type, Union
 
-from .base import EventIdNotNullRule, QualityRule
+from .base import EventIdNotNullRule, QualityRule, Severity
+from .not_null import NotNullRule
+from .positive import AmountPositiveRule
+from .allowed_values import AllowedValuesRule, CurrencyValidRule, PaymentStatusValidRule
+from .timestamp import TimestampValidRule
 
 logger = logging.getLogger("quality_engine.registry")
 
@@ -100,9 +104,40 @@ class RuleRegistry:
 
 
 def create_default_registry() -> RuleRegistry:
-    """Create and populate a standard RuleRegistry with default rules."""
+    """Create and populate a standard RuleRegistry with default Day 15 rules."""
     registry = RuleRegistry()
+
+    # Null rules
     registry.register(EventIdNotNullRule())
+    not_null_fields = [
+        ("customer_id", Severity.HIGH),
+        ("session_id", Severity.HIGH),
+        ("order_id", Severity.HIGH),
+        ("product_id", Severity.HIGH),
+        ("amount", Severity.CRITICAL),
+        ("currency", Severity.HIGH),
+        ("payment_method", Severity.HIGH),
+        ("payment_status", Severity.HIGH),
+        ("device", Severity.HIGH),
+        ("country", Severity.HIGH),
+        ("source_version", Severity.HIGH),
+        ("event_time", Severity.HIGH),
+        ("ingestion_time", Severity.HIGH),
+    ]
+    for field_name, sev in not_null_fields:
+        registry.register(NotNullRule(field=field_name, severity_override=sev))
+
+    # Positive amount rule
+    registry.register(AmountPositiveRule(field="amount", severity_override=Severity.HIGH))
+
+    # Allowed values rules
+    registry.register(CurrencyValidRule())
+    registry.register(PaymentStatusValidRule())
+
+    # Timestamp valid rules
+    registry.register(TimestampValidRule(field="event_time", severity_override=Severity.HIGH))
+    registry.register(TimestampValidRule(field="ingestion_time", severity_override=Severity.HIGH))
+
     return registry
 
 

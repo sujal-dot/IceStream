@@ -1,7 +1,126 @@
 # IceStream Quality Engine Rule Configuration
-# Day 14 Architecture Foundation
+# Day 15 - Null + Validity Detection Engine
 
 rules:
   - name: event_id_not_null
     enabled: true
+    type: not_null
+    field: event_id
     severity: CRITICAL
+
+  - name: customer_id_not_null
+    enabled: true
+    type: not_null
+    field: customer_id
+    severity: HIGH
+
+  - name: session_id_not_null
+    enabled: true
+    type: not_null
+    field: session_id
+    severity: HIGH
+
+  - name: order_id_not_null
+    enabled: true
+    type: not_null
+    field: order_id
+    severity: HIGH
+
+  - name: product_id_not_null
+    enabled: true
+    type: not_null
+    field: product_id
+    severity: HIGH
+
+  - name: amount_not_null
+    enabled: true
+    type: not_null
+    field: amount
+    severity: CRITICAL
+
+  - name: currency_not_null
+    enabled: true
+    type: not_null
+    field: currency
+    severity: HIGH
+
+  - name: payment_method_not_null
+    enabled: true
+    type: not_null
+    field: payment_method
+    severity: HIGH
+
+  - name: payment_status_not_null
+    enabled: true
+    type: not_null
+    field: payment_status
+    severity: HIGH
+
+  - name: device_not_null
+    enabled: true
+    type: not_null
+    field: device
+    severity: HIGH
+
+  - name: country_not_null
+    enabled: true
+    type: not_null
+    field: country
+    severity: HIGH
+
+  - name: source_version_not_null
+    enabled: true
+    type: not_null
+    field: source_version
+    severity: HIGH
+
+  - name: event_time_not_null
+    enabled: true
+    type: not_null
+    field: event_time
+    severity: HIGH
+
+  - name: ingestion_time_not_null
+    enabled: true
+    type: not_null
+    field: ingestion_time
+    severity: HIGH
+
+  - name: amount_positive
+    enabled: true
+    type: positive
+    field: amount
+    severity: HIGH
+
+  - name: currency_valid
+    enabled: true
+    type: allowed_values
+    field: currency
+    severity: HIGH
+    allowed_values:
+      - INR
+      - USD
+      - EUR
+
+  - name: payment_status_valid
+    enabled: true
+    type: allowed_values
+    field: payment_status
+    severity: HIGH
+    allowed_values:
+      - SUCCESS
+      - FAILED
+      - PENDING
+      - CANCELLED
+
+  - name: event_time_valid
+    enabled: true
+    type: timestamp
+    field: event_time
+    severity: HIGH
+
+  - name: ingestion_time_valid
+    enabled: true
+    type: timestamp
+    field: ingestion_time
+    severity: HIGH

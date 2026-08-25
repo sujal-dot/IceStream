@@ -61,13 +61,14 @@ class ValidationResult:
     def to_dict(self) -> Dict[str, Any]:
         """Convert validation result to dictionary format."""
         return {
+            "event_id": self.event_id,
+            "rule": self.rule_name,
             "rule_name": self.rule_name,
             "passed": self.passed,
             "status": self.status.value,
             "severity": self.severity.value if isinstance(self.severity, Enum) else str(self.severity),
             "message": self.message,
             "field": self.field,
-            "event_id": self.event_id,
             "timestamp": self.timestamp,
             "metadata": dict(self.metadata),
         }

@@ -5,10 +5,21 @@ import os
 from typing import Any, Dict, List, Optional, Set
 import yaml
 
-from rules.base import Severity
+from rules.base import QualityRule, Severity
+from rules.not_null import NotNullRule
+from rules.positive import AmountPositiveRule
+from rules.allowed_values import AllowedValuesRule
+from rules.timestamp import TimestampValidRule
 from rules.registry import RuleRegistry, default_registry
 
 logger = logging.getLogger("quality_engine.config")
+
+RULE_TYPE_MAP = {
+    "not_null": NotNullRule,
+    "positive": AmountPositiveRule,
+    "allowed_values": AllowedValuesRule,
+    "timestamp": TimestampValidRule,
+}
 
 
 def load_rule_config(
@@ -62,25 +73,18 @@ def load_rule_config(
             )
         seen_rules.add(rule_name)
 
-        if not target_registry.exists(rule_name):
-            raise KeyError(
-                f"Unknown rule: {rule_name}. Rule must be registered before configuration."
-            )
-
-        rule = target_registry.get(rule_name)
-        if rule is None:
-            raise KeyError(f"Unknown rule: {rule_name}")
-
-        # Validate and apply enabled
+        # Parse enabled status
+        enabled = True
         if "enabled" in rule_cfg:
-            enabled = rule_cfg["enabled"]
-            if not isinstance(enabled, bool):
+            enabled_val = rule_cfg["enabled"]
+            if not isinstance(enabled_val, bool):
                 raise ValueError(
-                    f"Invalid 'enabled' value for rule '{rule_name}': expected boolean, got {type(enabled).__name__}"
+                    f"Invalid 'enabled' value for rule '{rule_name}': expected boolean, got {type(enabled_val).__name__}"
                 )
-            rule.enabled = enabled
+            enabled = enabled_val
 
-        # Validate and apply severity override
+        # Parse severity
+        severity_enum: Optional[Severity] = None
         if "severity" in rule_cfg:
             severity_str = rule_cfg["severity"]
             try:
@@ -90,13 +94,73 @@ def load_rule_config(
                 raise ValueError(
                     f"Invalid severity '{severity_str}' for rule '{rule_name}'. Allowed: {valid_severities}"
                 )
-            rule.severity = severity_enum
+
+        rule_type = rule_cfg.get("type")
+        if rule_type:
+            if rule_type not in RULE_TYPE_MAP:
+                raise ValueError(
+                    f"Unknown rule type '{rule_type}' for rule '{rule_name}'. Allowed: {list(RULE_TYPE_MAP.keys())}"
+                )
+
+            field = rule_cfg.get("field")
+            if not field:
+                raise ValueError(f"Rule '{rule_name}' of type '{rule_type}' requires 'field' parameter")
+
+            if rule_type == "not_null":
+                instance = NotNullRule(
+                    field=field,
+                    name=rule_name,
+                    severity_override=severity_enum,
+                    enabled=enabled,
+                )
+            elif rule_type == "positive":
+                instance = AmountPositiveRule(
+                    field=field,
+                    name=rule_name,
+                    severity_override=severity_enum,
+                    enabled=enabled,
+                )
+            elif rule_type == "allowed_values":
+                allowed_vals = rule_cfg.get("allowed_values")
+                if not allowed_vals or not isinstance(allowed_vals, list):
+                    raise ValueError(
+                        f"Rule '{rule_name}' of type 'allowed_values' requires a non-empty 'allowed_values' list"
+                    )
+                instance = AllowedValuesRule(
+                    field=field,
+                    allowed_values=allowed_vals,
+                    name=rule_name,
+                    severity_override=severity_enum,
+                    enabled=enabled,
+                )
+            elif rule_type == "timestamp":
+                instance = TimestampValidRule(
+                    field=field,
+                    name=rule_name,
+                    severity_override=severity_enum,
+                    enabled=enabled,
+                )
+
+            target_registry.register(instance, overwrite=True)
+        else:
+            if not target_registry.exists(rule_name):
+                raise KeyError(
+                    f"Unknown rule: {rule_name}. Rule must be registered before configuration."
+                )
+
+            rule = target_registry.get(rule_name)
+            if rule is None:
+                raise KeyError(f"Unknown rule: {rule_name}")
+
+            rule.enabled = enabled
+            if severity_enum:
+                rule.severity = severity_enum
 
         logger.debug(
             "Configured rule '%s': enabled=%s, severity=%s",
             rule_name,
-            rule.enabled,
-            rule.severity.value,
+            enabled,
+            severity_enum.value if severity_enum else "DEFAULT",
         )
 
     logger.info(
