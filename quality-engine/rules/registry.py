@@ -2,7 +2,7 @@
 
 import inspect
 import logging
-from typing import Callable, Dict, List, Optional, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 from .base import EventIdNotNullRule, QualityRule, Severity
 from .not_null import NotNullRule
@@ -138,11 +138,75 @@ def create_default_registry() -> RuleRegistry:
     registry.register(TimestampValidRule(field="event_time", severity_override=Severity.HIGH))
     registry.register(TimestampValidRule(field="ingestion_time", severity_override=Severity.HIGH))
 
+    # Anomaly / Duplicate rules
+    from detectors.duplicate import DuplicateEventRule, DuplicateOrderRule
+    from detectors.anomaly import ImpossibleAmountRule, FutureTimestampRule, LateEventRule
+
+    registry.register(DuplicateEventRule())
+    registry.register(DuplicateOrderRule())
+    registry.register(ImpossibleAmountRule())
+    registry.register(FutureTimestampRule())
+    registry.register(LateEventRule())
+
     return registry
 
 
-# Global default registry instance
-default_registry = create_default_registry()
+_default_registry_instance: Optional[RuleRegistry] = None
+
+
+def get_default_registry() -> RuleRegistry:
+    """Get or create the global default RuleRegistry lazily."""
+    global _default_registry_instance
+    if _default_registry_instance is None:
+        _default_registry_instance = create_default_registry()
+    return _default_registry_instance
+
+
+class _LazyDefaultRegistry:
+    """Proxy object that defers default_registry instantiation until first use."""
+
+    def _target(self) -> RuleRegistry:
+        return get_default_registry()
+
+    def register(self, *args: Any, **kwargs: Any) -> Any:
+        return self._target().register(*args, **kwargs)
+
+    def unregister(self, *args: Any, **kwargs: Any) -> Any:
+        return self._target().unregister(*args, **kwargs)
+
+    def get(self, *args: Any, **kwargs: Any) -> Any:
+        return self._target().get(*args, **kwargs)
+
+    def get_or_raise(self, *args: Any, **kwargs: Any) -> Any:
+        return self._target().get_or_raise(*args, **kwargs)
+
+    def get_class(self, *args: Any, **kwargs: Any) -> Any:
+        return self._target().get_class(*args, **kwargs)
+
+    def all(self) -> Any:
+        return self._target().all()
+
+    def list_rules(self) -> Any:
+        return self._target().list_rules()
+
+    def exists(self, *args: Any, **kwargs: Any) -> Any:
+        return self._target().exists(*args, **kwargs)
+
+    def clear(self) -> Any:
+        return self._target().clear()
+
+    def __contains__(self, item: Any) -> bool:
+        return item in self._target()
+
+    def __len__(self) -> int:
+        return len(self._target())
+
+    def __iter__(self) -> Any:
+        return iter(self._target().all())
+
+
+# Global lazy default registry instance
+default_registry = _LazyDefaultRegistry()
 
 
 def register_rule(

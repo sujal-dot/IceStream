@@ -1,6 +1,12 @@
-"""Detectors package for IceStream Quality Engine.
+"""Anomaly detectors for IceStream Quality Engine."""
 
-This package contains future statistical and pattern-based anomaly detectors,
-including schema drift detectors, timestamp drift detectors, and distribution
-anomaly detectors.
-"""
+from .duplicate import DuplicateEventRule, DuplicateOrderRule
+from .anomaly import ImpossibleAmountRule, FutureTimestampRule, LateEventRule
+
+__all__ = [
+    "DuplicateEventRule",
+    "DuplicateOrderRule",
+    "ImpossibleAmountRule",
+    "FutureTimestampRule",
+    "LateEventRule",
+]

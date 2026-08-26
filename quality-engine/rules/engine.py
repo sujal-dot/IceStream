@@ -139,6 +139,7 @@ class QualityEngine:
         # Compute summary
         summary = compute_validation_summary(results, event_id=event_id)
         self._metrics.increment_event_validation(summary.overall_status)
+        self._metrics.record_event_summary(summary, timestamp=event.event_time)
 
         latency_ms = (time.perf_counter() - start_time) * 1000.0
         self._metrics.record_validation_latency(latency_ms)

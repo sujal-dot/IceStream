@@ -124,3 +124,34 @@ rules:
     type: timestamp
     field: ingestion_time
     severity: HIGH
+
+anomaly_rules:
+  - name: duplicate_event
+    enabled: true
+    window_seconds: 300
+    severity: CRITICAL
+
+  - name: duplicate_order
+    enabled: true
+    window_seconds: 300
+    severity: HIGH
+
+  - name: impossible_amount
+    enabled: true
+    max_value: 500000
+    severity: HIGH
+
+  - name: future_timestamp
+    enabled: true
+    tolerance_seconds: 30
+    severity: HIGH
+
+  - name: late_event
+    enabled: true
+    allowed_lateness_seconds: 120
+    severity: MEDIUM
+
+metrics:
+  windows:
+    - 60
+    - 300

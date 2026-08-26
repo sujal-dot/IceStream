@@ -10,6 +10,8 @@ from rules.not_null import NotNullRule
 from rules.positive import AmountPositiveRule
 from rules.allowed_values import AllowedValuesRule
 from rules.timestamp import TimestampValidRule
+from detectors.duplicate import DuplicateEventRule, DuplicateOrderRule
+from detectors.anomaly import ImpossibleAmountRule, FutureTimestampRule, LateEventRule
 from rules.registry import RuleRegistry, default_registry
 
 logger = logging.getLogger("quality_engine.config")
@@ -19,6 +21,11 @@ RULE_TYPE_MAP = {
     "positive": AmountPositiveRule,
     "allowed_values": AllowedValuesRule,
     "timestamp": TimestampValidRule,
+    "duplicate_event": DuplicateEventRule,
+    "duplicate_order": DuplicateOrderRule,
+    "impossible_amount": ImpossibleAmountRule,
+    "future_timestamp": FutureTimestampRule,
+    "late_event": LateEventRule,
 }
 
 
@@ -54,12 +61,18 @@ def load_rule_config(
     if not isinstance(data, dict):
         raise ValueError(f"Invalid configuration root in {config_path}: expected mapping/dict")
 
-    if "rules" not in data or not isinstance(data["rules"], list):
-        raise ValueError(f"Configuration in {config_path} must contain a 'rules' list")
+    all_rule_entries: List[Dict[str, Any]] = []
+    if "rules" in data and isinstance(data["rules"], list):
+        all_rule_entries.extend(data["rules"])
+    if "anomaly_rules" in data and isinstance(data["anomaly_rules"], list):
+        all_rule_entries.extend(data["anomaly_rules"])
+
+    if not all_rule_entries:
+        raise ValueError(f"Configuration in {config_path} must contain a 'rules' or 'anomaly_rules' list")
 
     seen_rules: Set[str] = set()
 
-    for idx, rule_cfg in enumerate(data["rules"]):
+    for idx, rule_cfg in enumerate(all_rule_entries):
         if not isinstance(rule_cfg, dict):
             raise ValueError(f"Rule entry #{idx} in {config_path} must be a dictionary")
 
@@ -102,9 +115,7 @@ def load_rule_config(
                     f"Unknown rule type '{rule_type}' for rule '{rule_name}'. Allowed: {list(RULE_TYPE_MAP.keys())}"
                 )
 
-            field = rule_cfg.get("field")
-            if not field:
-                raise ValueError(f"Rule '{rule_name}' of type '{rule_type}' requires 'field' parameter")
+            field = rule_cfg.get("field", "event_id" if "event" in rule_name else "amount")
 
             if rule_type == "not_null":
                 instance = NotNullRule(
@@ -140,6 +151,46 @@ def load_rule_config(
                     severity_override=severity_enum,
                     enabled=enabled,
                 )
+            elif rule_type == "duplicate_event":
+                window = rule_cfg.get("window_seconds", 300)
+                instance = DuplicateEventRule(
+                    window_seconds=window,
+                    severity_override=severity_enum,
+                    enabled=enabled,
+                )
+            elif rule_type == "duplicate_order":
+                window = rule_cfg.get("window_seconds", 300)
+                instance = DuplicateOrderRule(
+                    window_seconds=window,
+                    severity_override=severity_enum,
+                    enabled=enabled,
+                )
+            elif rule_type == "impossible_amount":
+                max_val = rule_cfg.get("max_value", 500000)
+                instance = ImpossibleAmountRule(
+                    max_value=max_val,
+                    field=field,
+                    severity_override=severity_enum,
+                    enabled=enabled,
+                )
+            elif rule_type == "future_timestamp":
+                tolerance = rule_cfg.get("tolerance_seconds", 30)
+                instance = FutureTimestampRule(
+                    tolerance_seconds=tolerance,
+                    field=field,
+                    severity_override=severity_enum,
+                    enabled=enabled,
+                )
+            elif rule_type == "late_event":
+                lateness = rule_cfg.get("allowed_lateness_seconds", 120)
+                instance = LateEventRule(
+                    allowed_lateness_seconds=lateness,
+                    field=field,
+                    severity_override=severity_enum,
+                    enabled=enabled,
+                )
+            else:
+                raise ValueError(f"Unhandled rule type: {rule_type}")
 
             target_registry.register(instance, overwrite=True)
         else:
@@ -155,6 +206,16 @@ def load_rule_config(
             rule.enabled = enabled
             if severity_enum:
                 rule.severity = severity_enum
+
+            # Configure specific rule attributes if provided in YAML
+            if hasattr(rule, "window_seconds") and "window_seconds" in rule_cfg:
+                setattr(rule, "window_seconds", rule_cfg["window_seconds"])
+            if hasattr(rule, "max_value") and "max_value" in rule_cfg:
+                setattr(rule, "max_value", rule_cfg["max_value"])
+            if hasattr(rule, "tolerance_seconds") and "tolerance_seconds" in rule_cfg:
+                setattr(rule, "tolerance_seconds", rule_cfg["tolerance_seconds"])
+            if hasattr(rule, "allowed_lateness_seconds") and "allowed_lateness_seconds" in rule_cfg:
+                setattr(rule, "allowed_lateness_seconds", rule_cfg["allowed_lateness_seconds"])
 
         logger.debug(
             "Configured rule '%s': enabled=%s, severity=%s",
