@@ -12,6 +12,7 @@ from rules.allowed_values import AllowedValuesRule
 from rules.timestamp import TimestampValidRule
 from detectors.duplicate import DuplicateEventRule, DuplicateOrderRule
 from detectors.anomaly import ImpossibleAmountRule, FutureTimestampRule, LateEventRule
+from detectors.schema_drift import SchemaDriftRule
 from rules.registry import RuleRegistry, default_registry
 
 logger = logging.getLogger("quality_engine.config")
@@ -26,6 +27,7 @@ RULE_TYPE_MAP = {
     "impossible_amount": ImpossibleAmountRule,
     "future_timestamp": FutureTimestampRule,
     "late_event": LateEventRule,
+    "schema_drift": SchemaDriftRule,
 }
 
 
@@ -186,6 +188,15 @@ def load_rule_config(
                 instance = LateEventRule(
                     allowed_lateness_seconds=lateness,
                     field=field,
+                    severity_override=severity_enum,
+                    enabled=enabled,
+                )
+            elif rule_type == "schema_drift":
+                baseline = rule_cfg.get("baseline_version", "v1")
+                rename_map = rule_cfg.get("rename_map", {"customer_id": "customer"})
+                instance = SchemaDriftRule(
+                    baseline_version=baseline,
+                    rename_map=rename_map,
                     severity_override=severity_enum,
                     enabled=enabled,
                 )

@@ -10,13 +10,15 @@ from schemas.event import QualityEvent
 
 
 class Severity(str, Enum):
-    """Severity levels for quality rule failures."""
+    """Severity levels for quality rule failures and schema drift."""
 
     INFO = "INFO"
     LOW = "LOW"
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"
+    WARNING = "WARNING"
     CRITICAL = "CRITICAL"
+    BREAKING = "CRITICAL"
 
 
 class RuleStatus(str, Enum):

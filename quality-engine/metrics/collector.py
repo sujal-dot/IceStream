@@ -86,6 +86,14 @@ class InMemoryMetricsCollector(MetricsCollector):
             self._critical_failures: int = 0
             self._latency_count: int = 0
             self._latency_sum_ms: float = 0.0
+            self._schema_drift_total: int = 0
+            self._schema_drift_info: int = 0
+            self._schema_drift_warning: int = 0
+            self._schema_drift_critical: int = 0
+            self._schema_type_change_total: int = 0
+            self._schema_missing_column_total: int = 0
+            self._schema_new_column_total: int = 0
+            self._schema_rename_total: int = 0
             self._window_aggregators: Dict[int, WindowAggregator] = {
                 w: WindowAggregator(window_seconds=w, clock=self._clock)
                 for w in self._window_sizes
@@ -97,6 +105,27 @@ class InMemoryMetricsCollector(MetricsCollector):
             self.increment_rule_pass(result.rule_name)
         else:
             self.increment_rule_failure(result.rule_name, result.severity)
+
+        if result.rule_name == "schema_drift" or "change_type" in result.metadata:
+            with self._lock:
+                self._schema_drift_total += 1
+                sev = getattr(result.severity, "value", str(result.severity)).upper()
+                if sev == "INFO":
+                    self._schema_drift_info += 1
+                elif sev == "WARNING":
+                    self._schema_drift_warning += 1
+                elif sev in ("CRITICAL", "HIGH", "BREAKING"):
+                    self._schema_drift_critical += 1
+
+                change_type = str(result.metadata.get("change_type", "")).upper()
+                if "TYPE_CHANGE" in change_type:
+                    self._schema_type_change_total += 1
+                elif "MISSING_COLUMN" in change_type:
+                    self._schema_missing_column_total += 1
+                elif "NEW_COLUMN" in change_type:
+                    self._schema_new_column_total += 1
+                elif "RENAME" in change_type:
+                    self._schema_rename_total += 1
 
     def increment_rule_pass(self, rule_name: str) -> None:
         """Increment rule pass counter."""
@@ -173,5 +202,13 @@ class InMemoryMetricsCollector(MetricsCollector):
                 "rule_failures": dict(self._rule_failures),
                 "validation_latency_count": self._latency_count,
                 "validation_latency_avg_ms": avg_latency_ms,
+                "schema_drift_total": self._schema_drift_total,
+                "schema_drift_info": self._schema_drift_info,
+                "schema_drift_warning": self._schema_drift_warning,
+                "schema_drift_critical": self._schema_drift_critical,
+                "schema_type_change_total": self._schema_type_change_total,
+                "schema_missing_column_total": self._schema_missing_column_total,
+                "schema_new_column_total": self._schema_new_column_total,
+                "schema_rename_total": self._schema_rename_total,
                 "windows": window_dict,
             }

@@ -138,15 +138,17 @@ def create_default_registry() -> RuleRegistry:
     registry.register(TimestampValidRule(field="event_time", severity_override=Severity.HIGH))
     registry.register(TimestampValidRule(field="ingestion_time", severity_override=Severity.HIGH))
 
-    # Anomaly / Duplicate rules
+    # Anomaly / Duplicate / Schema Drift rules
     from detectors.duplicate import DuplicateEventRule, DuplicateOrderRule
     from detectors.anomaly import ImpossibleAmountRule, FutureTimestampRule, LateEventRule
+    from detectors.schema_drift import SchemaDriftRule
 
     registry.register(DuplicateEventRule())
     registry.register(DuplicateOrderRule())
     registry.register(ImpossibleAmountRule())
     registry.register(FutureTimestampRule())
     registry.register(LateEventRule())
+    registry.register(SchemaDriftRule())
 
     return registry
 

@@ -1,0 +1,22 @@
+schema:
+  baseline_version: v1
+  current_version: v1
+
+  rename_map:
+    customer_id: customer
+
+  severity:
+    new_optional_column: INFO
+    new_required_column: WARNING
+    missing_optional_column: WARNING
+    missing_required_column: CRITICAL
+    type_change: CRITICAL
+    rename: WARNING
+
+  compatibility:
+    allow_new_optional_columns: true
+    allow_type_widening: true
+    allow_required_field_addition: false
+
+  timestamp:
+    format: ISO8601

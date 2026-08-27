@@ -63,6 +63,17 @@ class SchemaRegistry:
             self._schemas[version_str] = schema
             return schema
 
+        # Major version fallback: e.g. "v1.0.0" -> "v1"
+        if "." in version_str:
+            major_ver = version_str.split(".")[0]
+            if major_ver in self._schemas:
+                return self._schemas[major_ver]
+            target_major_file = self.schema_dir / f"{major_ver}.json"
+            if target_major_file.exists():
+                schema = load_schema(target_major_file)
+                self._schemas[major_ver] = schema
+                return schema
+
         raise KeyError(f"Schema version '{version_str}' not found in registry (available: {self.list_versions()})")
 
     def list_versions(self) -> List[str]:
