@@ -1,0 +1,44 @@
+# Great Expectations Declarative Expectations Configuration
+# IceStream Quality Engine - Day 18
+
+expectations:
+  - name: event_id_not_null
+    expectation: expect_column_values_to_not_be_null
+    column: event_id
+    severity: CRITICAL
+    enabled: true
+
+  - name: amount_not_null
+    expectation: expect_column_values_to_not_be_null
+    column: amount
+    severity: CRITICAL
+    enabled: true
+
+  - name: amount_positive
+    expectation: expect_column_values_to_be_between
+    column: amount
+    min_value: 0
+    strict_min: true
+    severity: HIGH
+    enabled: true
+
+  - name: currency_valid
+    expectation: expect_column_values_to_be_in_set
+    column: currency
+    value_set:
+      - INR
+      - USD
+      - EUR
+    severity: HIGH
+    enabled: true
+
+  - name: payment_status_valid
+    expectation: expect_column_values_to_be_in_set
+    column: payment_status
+    value_set:
+      - SUCCESS
+      - FAILED
+      - PENDING
+      - CANCELLED
+    severity: HIGH
+    enabled: true

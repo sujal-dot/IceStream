@@ -94,6 +94,10 @@ class InMemoryMetricsCollector(MetricsCollector):
             self._schema_missing_column_total: int = 0
             self._schema_new_column_total: int = 0
             self._schema_rename_total: int = 0
+            self._ge_validation_runs: int = 0
+            self._ge_expectations_total: int = 0
+            self._ge_expectations_passed: int = 0
+            self._ge_expectations_failed: int = 0
             self._window_aggregators: Dict[int, WindowAggregator] = {
                 w: WindowAggregator(window_seconds=w, clock=self._clock)
                 for w in self._window_sizes
@@ -165,6 +169,19 @@ class InMemoryMetricsCollector(MetricsCollector):
             self._latency_count += 1
             self._latency_sum_ms += latency_ms
 
+    def record_ge_batch_metrics(self, batch_result: Any) -> None:
+        """Record batch metrics from a Great Expectations QualityBatchResult."""
+        with self._lock:
+            self._ge_validation_runs += 1
+            self._ge_expectations_total += getattr(batch_result, "total_expectations", 0)
+            self._ge_expectations_passed += getattr(batch_result, "passed_expectations", 0)
+            self._ge_expectations_failed += getattr(batch_result, "failed_expectations", 0)
+
+        # Record individual expectation ValidationResults
+        results = getattr(batch_result, "results", [])
+        for res in results:
+            self.record_rule_result(res)
+
     def get_window_metrics(self, window_seconds: int) -> Optional[WindowMetrics]:
         """Retrieve window metrics for specified duration."""
         with self._lock:
@@ -210,5 +227,9 @@ class InMemoryMetricsCollector(MetricsCollector):
                 "schema_missing_column_total": self._schema_missing_column_total,
                 "schema_new_column_total": self._schema_new_column_total,
                 "schema_rename_total": self._schema_rename_total,
+                "ge_validation_runs": self._ge_validation_runs,
+                "ge_expectations_total": self._ge_expectations_total,
+                "ge_expectations_passed": self._ge_expectations_passed,
+                "ge_expectations_failed": self._ge_expectations_failed,
                 "windows": window_dict,
             }
