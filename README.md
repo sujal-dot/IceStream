@@ -15,7 +15,7 @@ By combining stream processing with lakehouse table formats, real-time circuit b
 
 ## 2. Project Status
 
-> **CURRENT STATUS**: **Phase 4 — Observability Engine**
+> **CURRENT STATUS**: **Phase 5 — Self-Healing Pipeline**
 
 - **Phase 1 — Architecture & Environment**
   - **Day 1 — Architecture** ✓
@@ -38,6 +38,8 @@ By combining stream processing with lakehouse table formats, real-time circuit b
   - **Day 16 — Duplicate + Anomaly Detection** ✓
   - **Day 17 — Schema Drift Detector** ✓
   - **Day 18 — Great Expectations Integration** ✓
+- **Phase 5 — SELF-HEALING PIPELINE**
+  - **Day 19 — Error-Rate Engine & /metrics Endpoint** ✓
 
 - **Implemented on Day 1**: Project architecture specifications, repository directory layout, component documentation, failure resilience matrices, recovery workflow specifications, configuration placeholders, and system diagrams.
 - **Implemented on Day 2**: Local Docker Compose infrastructure orchestrating Kafka (KRaft), MinIO, PostgreSQL, Flink (JobManager & TaskManager), Prometheus, and Grafana with native container health checks.
@@ -59,6 +61,7 @@ By combining stream processing with lakehouse table formats, real-time circuit b
 - **Implemented on Day 16**: Duplicate & Anomaly Detection + Rolling-Window Metrics (`quality-engine/detectors/`, `quality-engine/metrics/`), duplicate event (`DuplicateEventRule`) and duplicate order (`DuplicateOrderRule`) detection with bounded state and window expiration, impossible amount limit (`ImpossibleAmountRule`), future timestamp tolerance (`FutureTimestampRule`), late event lateness detection (`LateEventRule`), deterministic time handling with injectable `Clock` (`SystemClock`, `FixedClock`), 1-minute and 5-minute rolling window metrics aggregation (`WindowAggregator`), structured `WindowMetrics` model, event-level error rate calculation (`invalid_events / total_events`), 10,000-event performance benchmark (`test_performance.py`), technical documentation (`docs/anomaly-detection.md`), and 79 unit tests (`quality-engine/tests/`).
 - **Implemented on Day 17**: Production-quality Schema Drift Detector (`quality-engine/detectors/schema_drift.py`), dynamic schema comparison engine (`schema/compatibility.py`, `SchemaComparator`), ChangeType classification (`MISSING_COLUMN`, `NEW_COLUMN`, `TYPE_CHANGE`, `RENAMED_COLUMN`, `REMOVED_COLUMN`), severity model (`INFO`, `WARNING`, `CRITICAL`), compatibility classification (`COMPATIBLE`, `WARNING`, `BREAKING`), explicit schema rename mapping, unknown version detection (`SCHEMA_VERSION_UNKNOWN`), zero-I/O in-memory schema definition caching, low-cardinality schema drift metrics tracking, quality engine integration (`QualityEngine`), performance benchmark (`benchmarks/bench_schema_drift.py`), technical documentation (`docs/schema-drift.md`), and 152 Pytest unit/integration tests (`tests/quality-engine/test_schema_drift.py`).
 - **Implemented on Day 18**: Hybrid Quality Engine Architecture (`quality-engine/ge_adapter/`, `quality-engine/hybrid_engine.py`), Great Expectations (GE v0.18.19) adapter integration, declarative expectation configuration (`config/expectations.yaml`), Expectation Registry (`GEExpectationRegistry`), raw GE result normalization to standardized `ValidationResult` schema (`GEResultMapper`), `QualityBatchResult` summary model, `HybridQualityEngine` orchestrator combining Great Expectations (batch/micro-batch declarative checks) with Custom Rules Engine (event-by-event streaming checks), deduplicated event invalidity tracking, formatted `IceStream Quality Summary` report generator, low-cardinality GE Prometheus metrics collector integration (`ge_validation_runs`, `ge_expectations_total`, `ge_expectations_passed`, `ge_expectations_failed`), 10,000-event performance benchmark, technical documentation (`docs/great-expectations-integration.md`), and 132 Pytest unit/integration tests.
+- **Implemented on Day 19**: Error-Rate Engine (`quality-engine/metrics/error_rate.py`) calculating `error_rate = failed_events / total_events`, 1-minute and 5-minute rolling windows, health classification thresholds (`< 1% HEALTHY`, `1–2% WARNING`, `> 2% CRITICAL`), configurable threshold validation, event-level failure aggregation (multiple failed rules per event = 1 failed event), zero-traffic `data_available` status, FastAPI observability backend service (`backend/app.py`) exposing `GET /metrics` and `GET /health` REST endpoints, technical documentation (`docs/error-rate-engine.md`), unit test suite (`tests/test_error_rate_engine.py`), API test suite (`tests/test_metrics_api.py`), integration test suite (`tests/test_day19_error_rate_integration.py`), and performance benchmark (`benchmarks/bench_error_rate_engine.py`). *Note: Signaling layer only; circuit breaker and automated recovery actions are strictly reserved for subsequent days.*
 
 ---
 

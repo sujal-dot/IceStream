@@ -5,7 +5,6 @@ import time
 import traceback
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from metrics.collector import InMemoryMetricsCollector, MetricsCollector
 from schemas.event import QualityEvent
 from rules.base import (
     EventStatus,
@@ -26,8 +25,10 @@ class QualityEngine:
     def __init__(
         self,
         registry: Optional[Union[RuleRegistry, List[QualityRule]]] = None,
-        metrics_collector: Optional[MetricsCollector] = None,
+        metrics_collector: Optional[Any] = None,
     ) -> None:
+        from metrics.collector import InMemoryMetricsCollector, MetricsCollector
+        
         if registry is None:
             self._registry = default_registry
         elif isinstance(registry, RuleRegistry):
@@ -53,7 +54,7 @@ class QualityEngine:
         return self._registry
 
     @property
-    def metrics(self) -> MetricsCollector:
+    def metrics(self) -> Any:
         """Access the metrics collector."""
         return self._metrics
 

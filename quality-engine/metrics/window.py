@@ -20,6 +20,27 @@ class WindowMetrics:
     invalid_events: int
     error_rate: float
 
+    @property
+    def failed_events(self) -> int:
+        return self.invalid_events
+
+    @property
+    def error_rate_percent(self) -> float:
+        return round(self.error_rate * 100.0, 4)
+
+    @property
+    def data_available(self) -> bool:
+        return self.total_events > 0
+
+    @property
+    def health(self) -> str:
+        if self.error_rate < 0.01:
+            return "HEALTHY"
+        elif self.error_rate <= 0.02:
+            return "WARNING"
+        else:
+            return "CRITICAL"
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert metrics to standard dictionary representation."""
         return {
@@ -29,7 +50,11 @@ class WindowMetrics:
             "total_events": self.total_events,
             "valid_events": self.valid_events,
             "invalid_events": self.invalid_events,
-            "error_rate": round(self.error_rate, 4),
+            "failed_events": self.failed_events,
+            "error_rate": self.error_rate,
+            "error_rate_percent": self.error_rate_percent,
+            "health": self.health,
+            "data_available": self.data_available,
         }
 
 
