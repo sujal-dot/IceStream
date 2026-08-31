@@ -57,6 +57,13 @@ class MetricsCollector(ABC):
         pass
 
     @abstractmethod
+    def increment_counter(
+        self, name: str, amount: int = 1, labels: Optional[Dict[str, str]] = None
+    ) -> None:
+        """Increment a counter metric with optional low-cardinality labels."""
+        pass
+
+    @abstractmethod
     def reset(self) -> None:
         """Reset all metric counters and window aggregators."""
         pass
@@ -98,6 +105,8 @@ class InMemoryMetricsCollector(MetricsCollector):
             self._ge_expectations_total: int = 0
             self._ge_expectations_passed: int = 0
             self._ge_expectations_failed: int = 0
+            self._generic_counters: Dict[str, int] = {}
+            self._labeled_counters: Dict[str, Dict[str, int]] = {}
             self._window_aggregators: Dict[int, WindowAggregator] = {
                 w: WindowAggregator(window_seconds=w, clock=self._clock)
                 for w in self._window_sizes
@@ -182,6 +191,21 @@ class InMemoryMetricsCollector(MetricsCollector):
         for res in results:
             self.record_rule_result(res)
 
+    def increment_counter(
+        self, name: str, amount: int = 1, labels: Optional[Dict[str, str]] = None
+    ) -> None:
+        """Increment a counter metric with optional low-cardinality labels."""
+        with self._lock:
+            if not labels:
+                self._generic_counters[name] = self._generic_counters.get(name, 0) + amount
+            else:
+                label_key = ",".join(f"{k}={v}" for k, v in sorted(labels.items()))
+                if name not in self._labeled_counters:
+                    self._labeled_counters[name] = {}
+                self._labeled_counters[name][label_key] = (
+                    self._labeled_counters[name].get(label_key, 0) + amount
+                )
+
     def get_window_metrics(self, window_seconds: int) -> Optional[WindowMetrics]:
         """Retrieve window metrics for specified duration."""
         with self._lock:
@@ -231,5 +255,7 @@ class InMemoryMetricsCollector(MetricsCollector):
                 "ge_expectations_total": self._ge_expectations_total,
                 "ge_expectations_passed": self._ge_expectations_passed,
                 "ge_expectations_failed": self._ge_expectations_failed,
+                "counters": dict(self._generic_counters),
+                "labeled_counters": {k: dict(v) for k, v in self._labeled_counters.items()},
                 "windows": window_dict,
             }

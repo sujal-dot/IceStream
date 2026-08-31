@@ -33,8 +33,10 @@ def test_quarantine_table_schema():
     catalog = get_catalog()
     table = catalog.load_table("quarantine.invalid_checkout_events")
     field_names = [field.name for field in table.schema().fields]
-    assert "raw_payload" in field_names
-    assert "failure_reason" in field_names
+    assert "quarantine_id" in field_names
+    assert "error_code" in field_names
+    assert "failed_rules" in field_names
+    assert "pipeline_version" in field_names
 
 
 def test_audit_table_schema():

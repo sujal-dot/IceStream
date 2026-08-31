@@ -9,6 +9,7 @@ from pyiceberg.types import (
     DoubleType,
     DecimalType,
     TimestampType,
+    ListType,
 )
 
 # ------------------------------------------------------------------------------
@@ -66,14 +67,15 @@ SILVER_VALID_CHECKOUT_EVENTS_SCHEMA = Schema(
 # Quarantine Layer: Invalid or malformed events isolated for investigation
 # ------------------------------------------------------------------------------
 QUARANTINE_INVALID_CHECKOUT_EVENTS_SCHEMA = Schema(
-    NestedField(1, "event_id", StringType(), required=False),
-    NestedField(2, "event_time", StringType(), required=False),
-    NestedField(3, "raw_payload", StringType(), required=True),
-    NestedField(4, "failure_reason", StringType(), required=True),
-    NestedField(5, "failure_type", StringType(), required=False),
-    NestedField(6, "schema_version", StringType(), required=False),
+    NestedField(1, "quarantine_id", StringType(), required=False),
+    NestedField(2, "event_id", StringType(), required=False),
+    NestedField(3, "event", StringType(), required=False),
+    NestedField(4, "error_code", StringType(), required=False),
+    NestedField(5, "error_message", StringType(), required=False),
+    NestedField(6, "failed_rules", ListType(element_id=10, element=StringType(), element_required=False), required=False),
     NestedField(7, "detected_at", StringType(), required=False),
-    NestedField(8, "pipeline_stage", StringType(), required=False),
+    NestedField(8, "pipeline_version", StringType(), required=False),
+    NestedField(9, "schema_version", StringType(), required=False),
 )
 
 # ------------------------------------------------------------------------------

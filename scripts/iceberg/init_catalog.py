@@ -54,11 +54,11 @@ def init_catalog():
         try:
             if catalog.table_exists(identifier):
                 tbl = catalog.load_table(identifier)
-                # If schema fields don't match Day 10 definition for bronze, drop and recreate safely
-                if identifier == "bronze.checkout_events" and len(tbl.schema().fields) != len(schema.fields):
+                if (identifier == "bronze.checkout_events" and len(tbl.schema().fields) != len(schema.fields)) or \
+                   (identifier == "quarantine.invalid_checkout_events" and (len(tbl.schema().fields) != len(schema.fields) or "quarantine_id" not in [f.name for f in tbl.schema().fields])):
                     catalog.drop_table(identifier)
                     catalog.create_table(identifier, schema=schema, properties=properties)
-                    table_status = "✓ (recreated to match Day 10 contract)"
+                    table_status = "✓ (recreated to match schema contract)"
                 else:
                     table_status = "✓ (exists)"
             else:
