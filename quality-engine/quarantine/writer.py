@@ -2,6 +2,7 @@
 IceStream Quarantine Writer
 Handles durable persistence of quarantine records to Apache Iceberg via PyArrow & REST Catalog.
 """
+import json
 import logging
 from typing import List, Optional, Tuple
 import pyarrow as pa
@@ -66,6 +67,42 @@ class QuarantineWriter:
         """Persist a single quarantine record to Iceberg."""
         written_count, success = self.write_batch([record])
         return success and (written_count == 1)
+
+    def write_invalid_event(
+        self, event: dict, quality_result: dict, error_code: str = "INVALID_EVENT"
+    ) -> dict:
+        """Convenience method to construct QuarantineRecord and write to Iceberg/quarantine."""
+        import uuid
+        from datetime import datetime, timezone
+
+        q_id = f"q_{uuid.uuid4().hex[:12]}"
+        evt_id = str(event.get("event_id", f"evt_{uuid.uuid4().hex[:8]}"))
+        failed_rules = quality_result.get("failed_rules", [])
+        if isinstance(failed_rules, list):
+            failed_rules_list = [str(r) for r in failed_rules]
+        else:
+            failed_rules_list = [str(failed_rules)]
+
+        rec = QuarantineRecord(
+            quarantine_id=q_id,
+            event_id=evt_id,
+            event=json.dumps(event) if isinstance(event, dict) else str(event),
+            error_code=error_code,
+            error_message=f"Validation failed: {failed_rules_list}",
+            failed_rules=failed_rules_list,
+            detected_at=datetime.now(timezone.utc).isoformat(),
+            pipeline_version="0.22.0",
+            schema_version=str(event.get("schema_version", "v1.0")),
+        )
+
+        cnt, success = self.write_batch([rec])
+        return {
+            "status": "SUCCESS" if success else "FAILED",
+            "quarantine_id": q_id,
+            "event_id": evt_id,
+            "error_code": error_code,
+            "records_written": cnt,
+        }
 
     def write_batch(self, records: List[QuarantineRecord]) -> Tuple[int, bool]:
         """Persist a batch of quarantine records to Iceberg in a single atomic append.

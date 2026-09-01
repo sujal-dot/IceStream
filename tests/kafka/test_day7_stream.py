@@ -101,10 +101,12 @@ def test_performance_consumer_e2e_flow(kafka_bootstrap, topic_name):
 
 def test_fault_injection_stream_consumption(kafka_bootstrap, topic_name):
     """Verify stream with injected faults is consumed without consumer failure."""
+    import uuid
+    group_id = f"icestream-day7-fault-test-{uuid.uuid4().hex[:8]}"
     consumer = PerformanceConsumer(
         bootstrap_servers=kafka_bootstrap,
         topic=topic_name,
-        group_id="icestream-day7-fault-test-group-2",
+        group_id=group_id,
         quiet=True,
     )
     
@@ -113,9 +115,9 @@ def test_fault_injection_stream_consumption(kafka_bootstrap, topic_name):
     
     config = GeneratorConfig(
         rate=500,
-        null_rate=2.0,
-        duplicate_rate=1.0,
-        negative_rate=1.0,
+        null_rate=20.0,
+        duplicate_rate=10.0,
+        negative_rate=10.0,
         bootstrap_server=kafka_bootstrap,
         topic=topic_name,
         duration=2.0,
@@ -125,7 +127,7 @@ def test_fault_injection_stream_consumption(kafka_bootstrap, topic_name):
     engine = EventGeneratorEngine(config=config, producer=producer)
     
     # Generate events with faults
-    for _ in range(50):
+    for _ in range(100):
         engine.produce_next_event()
     producer.flush(timeout=5.0)
     
