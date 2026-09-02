@@ -328,10 +328,8 @@ class RemediationController:
             record_state_metric(self.pipeline_id, "VALIDATING")
 
             # Evaluate against CircuitBreaker recovery criteria
-            # Check if circuit is OPEN -> transition via probe or record recovery result
             if self.circuit_breaker.state == CircuitState.OPEN:
-                # If timeout passed, advance circuit breaker or force probe
-                self.circuit_breaker.can_probe()
+                self.circuit_breaker.transition_to(CircuitState.HALF_OPEN, reason="remediation_probe")
 
             # Tell CircuitBreaker the recovery probe result
             new_cb_state = self.circuit_breaker.record_recovery_result(

@@ -426,6 +426,57 @@ class StorageBackend:
                 return None
             return dict(row)
 
+    def list_incidents(
+        self, status: Optional[str] = None, limit: int = 50, offset: int = 0
+    ) -> Dict[str, Any]:
+        """Fetch paginated incidents from database with optional status filter."""
+        limit = max(1, min(limit, 100))
+        offset = max(0, offset)
+
+        if self.use_sqlite:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            if status:
+                cursor.execute(
+                    "SELECT COUNT(*) FROM pipeline_incidents WHERE status = ?", (status,)
+                )
+                total = cursor.fetchone()[0]
+                cursor.execute(
+                    "SELECT * FROM pipeline_incidents WHERE status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                    (status, limit, offset),
+                )
+            else:
+                cursor.execute("SELECT COUNT(*) FROM pipeline_incidents")
+                total = cursor.fetchone()[0]
+                cursor.execute(
+                    "SELECT * FROM pipeline_incidents ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                    (limit, offset),
+                )
+            rows = cursor.fetchall()
+            return {"items": [dict(r) for r in rows], "total": total}
+        else:
+            conn = self._get_connection()
+            with conn.cursor() as cursor:
+                if status:
+                    cursor.execute(
+                        "SELECT COUNT(*) FROM pipeline_incidents WHERE status = %s", (status,)
+                    )
+                    total = cursor.fetchone()[0]
+                    cursor.execute(
+                        "SELECT * FROM pipeline_incidents WHERE status = %s ORDER BY created_at DESC LIMIT %s OFFSET %s",
+                        (status, limit, offset),
+                    )
+                else:
+                    cursor.execute("SELECT COUNT(*) FROM pipeline_incidents")
+                    total = cursor.fetchone()[0]
+                    cursor.execute(
+                        "SELECT * FROM pipeline_incidents ORDER BY created_at DESC LIMIT %s OFFSET %s",
+                        (limit, offset),
+                    )
+                rows = cursor.fetchall()
+            conn.close()
+            return {"items": [dict(r) for r in rows], "total": total}
+
     # --- Remediation Attempt Methods ---
 
     def record_remediation_attempt(

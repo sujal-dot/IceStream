@@ -23,6 +23,7 @@ logger = logging.getLogger("icestream.remediation.state_manager")
 
 class PipelineState(str, Enum):
     RUNNING = "RUNNING"
+    PAUSED = "PAUSED"
     DEGRADED = "DEGRADED"
     QUARANTINING = "QUARANTINING"
     CIRCUIT_OPEN = "CIRCUIT_OPEN"
@@ -38,17 +39,24 @@ class PipelineState(str, Enum):
 # Define valid state transition graph
 VALID_TRANSITIONS: Dict[PipelineState, Set[PipelineState]] = {
     PipelineState.RUNNING: {
+        PipelineState.PAUSED,
         PipelineState.DEGRADED,
         PipelineState.QUARANTINING,
         PipelineState.CIRCUIT_OPEN,
     },
+    PipelineState.PAUSED: {
+        PipelineState.RUNNING,
+        PipelineState.RESUMING,
+    },
     PipelineState.DEGRADED: {
         PipelineState.RUNNING,
+        PipelineState.PAUSED,
         PipelineState.QUARANTINING,
         PipelineState.CIRCUIT_OPEN,
     },
     PipelineState.QUARANTINING: {
         PipelineState.RUNNING,
+        PipelineState.PAUSED,
         PipelineState.DEGRADED,
         PipelineState.CIRCUIT_OPEN,
     },
@@ -167,6 +175,7 @@ class PipelineStateManager:
 
         Raises ValueError if transition is invalid and force is False.
         """
+        to_state = to_state if isinstance(to_state, PipelineState) else PipelineState(str(to_state))
         curr = self.current_state
         if not force and to_state != curr:
             if not self.can_transition_to(to_state):

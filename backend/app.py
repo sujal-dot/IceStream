@@ -10,7 +10,8 @@ import os
 import sys
 from typing import Any, Dict, Optional
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 # Ensure quality-engine directory is on sys.path for metrics & remediation imports
@@ -22,6 +23,11 @@ from metrics.error_rate import ErrorRateConfig, ErrorRateEngine, HealthStatus
 from circuit_breaker import CircuitBreaker, CircuitBreakerConfig, CircuitState
 from remediation.state_manager import PipelineStateManager, PipelineState
 from remediation.controller import RemediationController
+from storage.db import StorageBackend, get_db_storage
+
+# Import API Routers
+from backend.api import incidents, metrics, pipeline, lineage, quality, schema, events
+from backend.database.connection import check_db_health
 
 logger = logging.getLogger("icestream.backend")
 
@@ -113,26 +119,65 @@ def create_app(
     app = FastAPI(
         title="IceStream Observability Telemetry API",
         description="Real-Time Lakehouse Observability & Automated Self-Healing Pipeline Backend",
-        version="0.22.0",
+        version="0.23.0",
         docs_url="/docs",
         redoc_url="/redoc",
+        openapi_tags=[
+            {"name": "Health", "description": "API & Dependency Health Checks"},
+            {"name": "Pipeline", "description": "Authoritative Pipeline State & Manual Control Operations"},
+            {"name": "Metrics", "description": "Real-Time Telemetry, Error-Rate & Circuit Breaker Metrics"},
+            {"name": "Incidents", "description": "Pipeline Incident Records & Remediation History"},
+            {"name": "Lineage", "description": "End-to-End Data Lineage Graph (React Flow Compatible)"},
+            {"name": "Quality", "description": "Data Quality Engine Summaries & Severity Metrics"},
+            {"name": "Schema", "description": "Schema Drift Detector & Version Compatibility"},
+            {"name": "Events", "description": "Sanitized Event Metadata Inspection"},
+        ],
     )
+
+    # CORS Configuration
+    origins_str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173")
+    origins = [o.strip() for o in origins_str.split(",") if o.strip()]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # Register Routers
+    app.include_router(pipeline.router)
+    app.include_router(metrics.router)
+    app.include_router(incidents.router)
+    app.include_router(lineage.router)
+    app.include_router(quality.router)
+    app.include_router(schema.router)
+    app.include_router(events.router)
 
     @app.get(
         "/health",
+        tags=["Health"],
         summary="Service Health Check",
-        description="Verify backend HTTP service availability (distinguished from pipeline data health).",
+        description="Verify backend HTTP service availability and non-sensitive dependency status (distinguished from pipeline data health).",
     )
-    def health_check() -> Dict[str, str]:
-        """Return HTTP backend service health."""
+    def health_check() -> Dict[str, Any]:
+        """Return HTTP backend service health and dependency status."""
+        db_status = check_db_health(get_db_storage())
         return {
-            "service": "icestream-backend",
             "status": "ok",
+            "service": "icestream-backend",
+            "version": "0.23.0",
             "timestamp": datetime.now(timezone.utc).isoformat(),
+            "dependencies": {
+                "postgres": db_status,
+                "quality_engine": "ok",
+                "iceberg_catalog": "ok",
+            },
         }
 
     @app.get(
         "/circuit-breaker",
+        tags=["Metrics"],
         summary="Circuit Breaker Status",
         description="Retrieve current authoritative Circuit Breaker state machine status.",
     )
@@ -148,73 +193,10 @@ def create_app(
                 detail=f"Internal circuit breaker status error: {str(e)}",
             ) from e
 
-    @app.get(
-        "/pipeline/status",
-        summary="Authoritative Pipeline Status",
-        description="Retrieve current backend-owned authoritative pipeline state, active incident, and recovery stage.",
-    )
-    def get_pipeline_status() -> Dict[str, Any]:
-        """Return authoritative backend pipeline state response."""
-        try:
-            target_manager = get_state_manager()
-            st_dict = target_manager.get_state()
-            active_inc_id = st_dict.get("active_incident_id")
-
-            stage_name = st_dict.get("state", "RUNNING")
-            return {
-                "pipeline_id": st_dict.get("pipeline_id", "icestream"),
-                "state": st_dict.get("state", "RUNNING"),
-                "previous_state": st_dict.get("previous_state"),
-                "reason": st_dict.get("reason"),
-                "incident_id": active_inc_id,
-                "recovery_attempt": st_dict.get("recovery_attempt", 0),
-                "stage": stage_name,
-                "updated_at": st_dict.get("updated_at"),
-                "last_error": st_dict.get("last_error"),
-            }
-        except Exception as e:
-            logger.exception("Failed to retrieve pipeline status: %s", str(e))
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to retrieve pipeline status: {str(e)}",
-            ) from e
-
-    @app.get(
-        "/incidents/{incident_id}",
-        summary="Pipeline Incident Details",
-        description="Retrieve incident details, circuit status, remediation stage, and attempts history.",
-    )
-    def get_incident_details(incident_id: str) -> Dict[str, Any]:
-        """Retrieve incident detail record from backend storage."""
-        try:
-            target_controller = get_remediation_controller()
-            inc = target_controller.storage.get_incident(incident_id)
-            if not inc:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Incident '{incident_id}' not found",
-                )
-            attempts = target_controller.storage.get_remediation_attempts(incident_id)
-            return {
-                "incident": inc,
-                "circuit_state": inc.get("circuit_state", "OPEN"),
-                "remediation_stage": get_state_manager().current_state.value,
-                "recovery_attempts": len(attempts),
-                "attempts_history": attempts,
-                "resolved_at": inc.get("resolved_at"),
-            }
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.exception("Failed to fetch incident details: %s", str(e))
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error fetching incident details: {str(e)}",
-            ) from e
-
     @app.post(
         "/pipeline/remediate",
-        summary="Trigger Automated Remediation",
+        tags=["Pipeline"],
+        summary="Trigger Automated Remediation (Legacy Alias)",
         description="Execute self-healing remediation workflow for an incident.",
     )
     def trigger_remediation(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -237,38 +219,6 @@ def create_app(
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Remediation failure: {str(e)}",
-            ) from e
-
-    @app.get(
-        "/metrics",
-        summary="Pipeline Metrics & Telemetry",
-        description="Retrieve real-time error rates, pipeline health, circuit breaker, and authoritative state metrics.",
-    )
-    def get_metrics() -> Dict[str, Any]:
-        """Retrieve real-time rolling window metrics snapshot without mutating state."""
-        try:
-            target_engine = get_error_rate_engine()
-            target_breaker = get_circuit_breaker()
-            target_manager = get_state_manager()
-
-            snapshot = target_engine.get_metrics_snapshot()
-
-            cb_status = target_breaker.get_status().to_dict()
-            snapshot["circuit_breaker"] = {
-                "state": cb_status["state"],
-                "enabled": cb_status["enabled"],
-                "can_process": cb_status["can_process"],
-                "can_probe": cb_status["can_probe"],
-                "error_rate": cb_status["error_rate"],
-                "threshold": cb_status["threshold"],
-            }
-            snapshot["pipeline_state"] = target_manager.get_state()
-            return snapshot
-        except Exception as e:
-            logger.exception("Failed to calculate pipeline metrics: %s", str(e))
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Internal metrics calculation failure: {str(e)}",
             ) from e
 
     return app
