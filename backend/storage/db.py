@@ -84,14 +84,27 @@ class StorageBackend:
             """
             CREATE TABLE IF NOT EXISTS pipeline_incidents (
                 incident_id VARCHAR(64) PRIMARY KEY,
-                pipeline_id VARCHAR(64) NOT NULL,
+                pipeline_id VARCHAR(64) NOT NULL DEFAULT 'icestream',
+                pipeline_name VARCHAR(64) NOT NULL DEFAULT 'checkout-stream',
                 created_at TIMESTAMP NOT NULL,
-                trigger VARCHAR(64) NOT NULL,
-                error_rate REAL NOT NULL,
-                circuit_state VARCHAR(64) NOT NULL,
+                detected_at TIMESTAMP NOT NULL,
+                updated_at TIMESTAMP NOT NULL,
+                trigger VARCHAR(64) NOT NULL DEFAULT 'CRITICAL_ERROR_RATE',
+                trigger_type VARCHAR(64) NOT NULL DEFAULT 'CRITICAL_ERROR_RATE',
+                error_rate REAL NOT NULL DEFAULT 0.0,
+                threshold REAL NOT NULL DEFAULT 0.02,
+                circuit_state VARCHAR(64) NOT NULL DEFAULT 'OPEN',
                 failed_event_count INT NOT NULL DEFAULT 0,
+                failed_records INT NOT NULL DEFAULT 0,
+                total_records INT NOT NULL DEFAULT 0,
                 quarantine_count INT NOT NULL DEFAULT 0,
-                status VARCHAR(64) NOT NULL,
+                status VARCHAR(64) NOT NULL DEFAULT 'OPEN',
+                severity VARCHAR(32) NOT NULL DEFAULT 'CRITICAL',
+                message TEXT,
+                action_taken TEXT,
+                slack_sent BOOLEAN DEFAULT FALSE,
+                slack_sent_at TIMESTAMP,
+                slack_error TEXT,
                 recovery_attempt INT NOT NULL DEFAULT 0,
                 last_error TEXT,
                 resolved_at TIMESTAMP
@@ -113,12 +126,34 @@ class StorageBackend:
             """,
         ]
 
+        # Columns to ensure exist for backwards compatibility with existing DB tables
+        extra_cols = [
+            ("pipeline_name", "VARCHAR(64) DEFAULT 'checkout-stream'"),
+            ("detected_at", "TIMESTAMP"),
+            ("updated_at", "TIMESTAMP"),
+            ("trigger_type", "VARCHAR(64) DEFAULT 'CRITICAL_ERROR_RATE'"),
+            ("threshold", "REAL DEFAULT 0.02"),
+            ("failed_records", "INT DEFAULT 0"),
+            ("total_records", "INT DEFAULT 0"),
+            ("severity", "VARCHAR(32) DEFAULT 'CRITICAL'"),
+            ("message", "TEXT"),
+            ("action_taken", "TEXT"),
+            ("slack_sent", "BOOLEAN DEFAULT FALSE"),
+            ("slack_sent_at", "TIMESTAMP"),
+            ("slack_error", "TEXT"),
+        ]
+
         if self.use_sqlite:
             conn = self._get_connection()
             cursor = conn.cursor()
             for cmd in sql_commands:
                 cmd_clean = cmd.replace("AUTOINCREMENT if_sqlite", "AUTOINCREMENT")
                 cursor.execute(cmd_clean)
+            for col_name, col_def in extra_cols:
+                try:
+                    cursor.execute(f"ALTER TABLE pipeline_incidents ADD COLUMN {col_name} {col_def};")
+                except Exception:
+                    pass
             conn.commit()
         else:
             try:
@@ -128,6 +163,11 @@ class StorageBackend:
                         cmd_clean = cmd.replace("AUTOINCREMENT if_sqlite", "")
                         cmd_clean = cmd_clean.replace("INTEGER PRIMARY KEY", "SERIAL PRIMARY KEY")
                         cursor.execute(cmd_clean)
+                    for col_name, col_def in extra_cols:
+                        try:
+                            cursor.execute(f"ALTER TABLE pipeline_incidents ADD COLUMN IF NOT EXISTS {col_name} {col_def};")
+                        except Exception:
+                            pass
                 conn.commit()
                 conn.close()
             except Exception as e:
@@ -321,13 +361,128 @@ class StorageBackend:
 
     # --- Pipeline Incident Methods ---
 
+    # --- Pipeline Incident Methods ---
+
+    def _normalize_incident_dict(self, d: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize DB dictionary output so both legacy and Day 24 field aliases exist."""
+        if not d:
+            return d
+        res = dict(d)
+        p_name = res.get("pipeline_name") or res.get("pipeline_id") or "checkout-stream"
+        res["pipeline_name"] = p_name
+        res["pipeline_id"] = res.get("pipeline_id") or p_name
+
+        trig = res.get("trigger_type") or res.get("trigger") or "CRITICAL_ERROR_RATE"
+        res["trigger_type"] = trig
+        res["trigger"] = res.get("trigger") or trig
+
+        failed = res.get("failed_records") if res.get("failed_records") is not None else res.get("failed_event_count", 0)
+        res["failed_records"] = failed
+        res["failed_event_count"] = res.get("failed_event_count") if res.get("failed_event_count") is not None else failed
+
+        res["threshold"] = float(res.get("threshold") or 0.02)
+        res["total_records"] = int(res.get("total_records") or 0)
+        res["severity"] = res.get("severity") or ("CRITICAL" if float(res.get("error_rate", 0.0)) > 0.02 else ("WARNING" if float(res.get("error_rate", 0.0)) >= 0.01 else "HEALTHY"))
+        res["action_taken"] = res.get("action_taken") or "Downstream pipeline paused."
+
+        c_at = res.get("created_at")
+        res["detected_at"] = str(res.get("detected_at") or c_at or "")
+        res["created_at"] = str(c_at or "")
+        res["updated_at"] = str(res.get("updated_at") or c_at or "")
+        res["resolved_at"] = str(res["resolved_at"]) if res.get("resolved_at") else None
+        res["slack_sent"] = bool(res.get("slack_sent"))
+        res["slack_sent_at"] = str(res["slack_sent_at"]) if res.get("slack_sent_at") else None
+        res["slack_error"] = res.get("slack_error")
+        return res
+
+    def generate_incident_id(self, date_str: Optional[str] = None) -> str:
+        """Generate deterministic sequential incident ID e.g. INC-2026-0903-0001."""
+        now = datetime.now(timezone.utc)
+        if not date_str:
+            date_str = now.strftime("%Y-%m%d")
+        prefix = f"INC-{date_str}-"
+        pattern = f"{prefix}%"
+
+        if self.use_sqlite:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT incident_id FROM pipeline_incidents WHERE incident_id LIKE ? ORDER BY incident_id DESC LIMIT 1",
+                (pattern,),
+            )
+            row = cursor.fetchone()
+        else:
+            conn = self._get_connection()
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT incident_id FROM pipeline_incidents WHERE incident_id LIKE %s ORDER BY incident_id DESC LIMIT 1",
+                    (pattern,),
+                )
+                row = cursor.fetchone()
+            conn.close()
+
+        seq = 1
+        if row and row[0]:
+            try:
+                parts = str(row[0]).split("-")
+                seq = int(parts[-1]) + 1
+            except Exception:
+                seq = 1
+        return f"{prefix}{seq:04d}"
+
+    def find_active_incident(self, pipeline_name: str = "checkout-stream") -> Optional[Dict[str, Any]]:
+        """Find active OPEN or ACKNOWLEDGED incident for pipeline deduplication."""
+        query_sql_sqlite = "SELECT * FROM pipeline_incidents WHERE (pipeline_name = ? OR pipeline_id = ?) AND status IN ('OPEN', 'ACKNOWLEDGED') ORDER BY created_at DESC LIMIT 1"
+        query_sql_pg = "SELECT * FROM pipeline_incidents WHERE (pipeline_name = %s OR pipeline_id = %s) AND status IN ('OPEN', 'ACKNOWLEDGED') ORDER BY created_at DESC LIMIT 1"
+
+        if self.use_sqlite:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(query_sql_sqlite, (pipeline_name, pipeline_name))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return self._normalize_incident_dict(dict(row))
+        else:
+            conn = self._get_connection()
+            with conn.cursor() as cursor:
+                cursor.execute(query_sql_pg, (pipeline_name, pipeline_name))
+                row = cursor.fetchone()
+            conn.close()
+            if not row:
+                return None
+            return self._normalize_incident_dict(dict(row))
+
     def create_incident(self, incident: Dict[str, Any]) -> Dict[str, Any]:
-        ts = incident.get("created_at") or datetime.now(timezone.utc)
+        """Persist or update incident record in database."""
+        now = datetime.now(timezone.utc)
+        ts = incident.get("created_at") or now
         created_str = ts.isoformat() if isinstance(ts, datetime) else str(ts)
+        det_ts = incident.get("detected_at") or ts
+        detected_str = det_ts.isoformat() if isinstance(det_ts, datetime) else str(det_ts)
+        upd_ts = incident.get("updated_at") or now
+        updated_str = upd_ts.isoformat() if isinstance(upd_ts, datetime) else str(upd_ts)
+
         resolved_str = None
         if incident.get("resolved_at"):
             r = incident["resolved_at"]
             resolved_str = r.isoformat() if isinstance(r, datetime) else str(r)
+
+        slack_sent_str = None
+        if incident.get("slack_sent_at"):
+            s_at = incident["slack_sent_at"]
+            slack_sent_str = s_at.isoformat() if isinstance(s_at, datetime) else str(s_at)
+
+        p_name = incident.get("pipeline_name") or incident.get("pipeline_id") or "checkout-stream"
+        p_id = incident.get("pipeline_id") or p_name
+        trig = incident.get("trigger_type") or incident.get("trigger") or "CRITICAL_ERROR_RATE"
+        err_rate = float(incident.get("error_rate", 0.0))
+        thresh = float(incident.get("threshold", 0.02))
+
+        failed_c = int(incident.get("failed_records") if incident.get("failed_records") is not None else incident.get("failed_event_count", 0))
+        total_c = int(incident.get("total_records") or 0)
+        sev = incident.get("severity") or ("CRITICAL" if err_rate > 0.02 else ("WARNING" if err_rate >= 0.01 else "HEALTHY"))
+        act = incident.get("action_taken") or "Downstream pipeline paused."
 
         if self.use_sqlite:
             conn = self._get_connection()
@@ -335,29 +490,54 @@ class StorageBackend:
             cursor.execute(
                 """
                 INSERT INTO pipeline_incidents (
-                    incident_id, pipeline_id, created_at, trigger, error_rate, circuit_state,
-                    failed_event_count, quarantine_count, status, recovery_attempt, last_error, resolved_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    incident_id, pipeline_id, pipeline_name, created_at, detected_at, updated_at,
+                    trigger, trigger_type, error_rate, threshold, circuit_state,
+                    failed_event_count, failed_records, total_records, quarantine_count,
+                    status, severity, message, action_taken, slack_sent, slack_sent_at, slack_error,
+                    recovery_attempt, last_error, resolved_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(incident_id) DO UPDATE SET
                     status=excluded.status,
+                    severity=excluded.severity,
                     error_rate=excluded.error_rate,
-                    circuit_state=excluded.circuit_state,
+                    threshold=excluded.threshold,
                     failed_event_count=excluded.failed_event_count,
+                    failed_records=excluded.failed_records,
+                    total_records=excluded.total_records,
+                    circuit_state=excluded.circuit_state,
                     quarantine_count=excluded.quarantine_count,
+                    action_taken=excluded.action_taken,
+                    slack_sent=excluded.slack_sent,
+                    slack_sent_at=excluded.slack_sent_at,
+                    slack_error=excluded.slack_error,
                     recovery_attempt=excluded.recovery_attempt,
                     last_error=excluded.last_error,
+                    updated_at=excluded.updated_at,
                     resolved_at=excluded.resolved_at;
                 """,
                 (
                     incident["incident_id"],
-                    incident.get("pipeline_id", "icestream"),
+                    p_id,
+                    p_name,
                     created_str,
-                    incident.get("trigger", "CRITICAL_ERROR_RATE"),
-                    float(incident.get("error_rate", 0.0)),
+                    detected_str,
+                    updated_str,
+                    trig,
+                    trig,
+                    err_rate,
+                    thresh,
                     incident.get("circuit_state", "OPEN"),
-                    int(incident.get("failed_event_count", 0)),
+                    failed_c,
+                    failed_c,
+                    total_c,
                     int(incident.get("quarantine_count", 0)),
                     incident.get("status", "OPEN"),
+                    sev,
+                    incident.get("message"),
+                    act,
+                    1 if incident.get("slack_sent") else 0,
+                    slack_sent_str,
+                    incident.get("slack_error"),
                     int(incident.get("recovery_attempt", 0)),
                     incident.get("last_error"),
                     resolved_str,
@@ -370,38 +550,73 @@ class StorageBackend:
                 cursor.execute(
                     """
                     INSERT INTO pipeline_incidents (
-                        incident_id, pipeline_id, created_at, trigger, error_rate, circuit_state,
-                        failed_event_count, quarantine_count, status, recovery_attempt, last_error, resolved_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        incident_id, pipeline_id, pipeline_name, created_at, detected_at, updated_at,
+                        trigger, trigger_type, error_rate, threshold, circuit_state,
+                        failed_event_count, failed_records, total_records, quarantine_count,
+                        status, severity, message, action_taken, slack_sent, slack_sent_at, slack_error,
+                        recovery_attempt, last_error, resolved_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT(incident_id) DO UPDATE SET
                         status=EXCLUDED.status,
+                        severity=EXCLUDED.severity,
                         error_rate=EXCLUDED.error_rate,
-                        circuit_state=EXCLUDED.circuit_state,
+                        threshold=EXCLUDED.threshold,
                         failed_event_count=EXCLUDED.failed_event_count,
+                        failed_records=EXCLUDED.failed_records,
+                        total_records=EXCLUDED.total_records,
+                        circuit_state=EXCLUDED.circuit_state,
                         quarantine_count=EXCLUDED.quarantine_count,
+                        action_taken=EXCLUDED.action_taken,
+                        slack_sent=EXCLUDED.slack_sent,
+                        slack_sent_at=EXCLUDED.slack_sent_at,
+                        slack_error=EXCLUDED.slack_error,
                         recovery_attempt=EXCLUDED.recovery_attempt,
                         last_error=EXCLUDED.last_error,
+                        updated_at=EXCLUDED.updated_at,
                         resolved_at=EXCLUDED.resolved_at;
                     """,
                     (
                         incident["incident_id"],
-                        incident.get("pipeline_id", "icestream"),
-                        ts if isinstance(ts, datetime) else created_str,
-                        incident.get("trigger", "CRITICAL_ERROR_RATE"),
-                        float(incident.get("error_rate", 0.0)),
+                        p_id,
+                        p_name,
+                        created_str,
+                        detected_str,
+                        updated_str,
+                        trig,
+                        trig,
+                        err_rate,
+                        thresh,
                         incident.get("circuit_state", "OPEN"),
-                        int(incident.get("failed_event_count", 0)),
+                        failed_c,
+                        failed_c,
+                        total_c,
                         int(incident.get("quarantine_count", 0)),
                         incident.get("status", "OPEN"),
+                        sev,
+                        incident.get("message"),
+                        act,
+                        bool(incident.get("slack_sent")),
+                        slack_sent_str,
+                        incident.get("slack_error"),
                         int(incident.get("recovery_attempt", 0)),
                         incident.get("last_error"),
-                        incident.get("resolved_at") if isinstance(incident.get("resolved_at"), datetime) else resolved_str,
+                        resolved_str,
                     ),
                 )
             conn.commit()
             conn.close()
 
         return self.get_incident(incident["incident_id"]) or incident
+
+    def update_incident(self, incident_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update specific fields of an incident safely in DB."""
+        inc = self.get_incident(incident_id)
+        if not inc:
+            return None
+        merged = dict(inc)
+        merged.update(updates)
+        merged["updated_at"] = datetime.now(timezone.utc)
+        return self.create_incident(merged)
 
     def get_incident(self, incident_id: str) -> Optional[Dict[str, Any]]:
         if self.use_sqlite:
@@ -413,7 +628,7 @@ class StorageBackend:
             row = cursor.fetchone()
             if not row:
                 return None
-            return dict(row)
+            return self._normalize_incident_dict(dict(row))
         else:
             conn = self._get_connection()
             with conn.cursor() as cursor:
@@ -424,58 +639,55 @@ class StorageBackend:
             conn.close()
             if not row:
                 return None
-            return dict(row)
+            return self._normalize_incident_dict(dict(row))
 
     def list_incidents(
-        self, status: Optional[str] = None, limit: int = 50, offset: int = 0
+        self,
+        status: Optional[str] = None,
+        severity: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
     ) -> Dict[str, Any]:
-        """Fetch paginated incidents from database with optional status filter."""
+        """Fetch paginated incidents from database with optional status or severity filter."""
         limit = max(1, min(limit, 100))
         offset = max(0, offset)
+
+        where_clauses = []
+        params: List[Any] = []
+        if status:
+            where_clauses.append("status = ?")
+            params.append(status)
+        if severity:
+            where_clauses.append("severity = ?")
+            params.append(severity)
+
+        where_sql = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
         if self.use_sqlite:
             conn = self._get_connection()
             cursor = conn.cursor()
-            if status:
-                cursor.execute(
-                    "SELECT COUNT(*) FROM pipeline_incidents WHERE status = ?", (status,)
-                )
-                total = cursor.fetchone()[0]
-                cursor.execute(
-                    "SELECT * FROM pipeline_incidents WHERE status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
-                    (status, limit, offset),
-                )
-            else:
-                cursor.execute("SELECT COUNT(*) FROM pipeline_incidents")
-                total = cursor.fetchone()[0]
-                cursor.execute(
-                    "SELECT * FROM pipeline_incidents ORDER BY created_at DESC LIMIT ? OFFSET ?",
-                    (limit, offset),
-                )
+            cursor.execute(f"SELECT COUNT(*) FROM pipeline_incidents{where_sql}", tuple(params))
+            total = cursor.fetchone()[0]
+
+            cursor.execute(
+                f"SELECT * FROM pipeline_incidents{where_sql} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                tuple(params + [limit, offset]),
+            )
             rows = cursor.fetchall()
-            return {"items": [dict(r) for r in rows], "total": total}
+            return {"items": [self._normalize_incident_dict(dict(r)) for r in rows], "total": total}
         else:
+            pg_where_sql = where_sql.replace("?", "%s")
             conn = self._get_connection()
             with conn.cursor() as cursor:
-                if status:
-                    cursor.execute(
-                        "SELECT COUNT(*) FROM pipeline_incidents WHERE status = %s", (status,)
-                    )
-                    total = cursor.fetchone()[0]
-                    cursor.execute(
-                        "SELECT * FROM pipeline_incidents WHERE status = %s ORDER BY created_at DESC LIMIT %s OFFSET %s",
-                        (status, limit, offset),
-                    )
-                else:
-                    cursor.execute("SELECT COUNT(*) FROM pipeline_incidents")
-                    total = cursor.fetchone()[0]
-                    cursor.execute(
-                        "SELECT * FROM pipeline_incidents ORDER BY created_at DESC LIMIT %s OFFSET %s",
-                        (limit, offset),
-                    )
+                cursor.execute(f"SELECT COUNT(*) FROM pipeline_incidents{pg_where_sql}", tuple(params))
+                total = cursor.fetchone()[0]
+                cursor.execute(
+                    f"SELECT * FROM pipeline_incidents{pg_where_sql} ORDER BY created_at DESC LIMIT %s OFFSET %s",
+                    tuple(params + [limit, offset]),
+                )
                 rows = cursor.fetchall()
             conn.close()
-            return {"items": [dict(r) for r in rows], "total": total}
+            return {"items": [self._normalize_incident_dict(dict(r)) for r in rows], "total": total}
 
     # --- Remediation Attempt Methods ---
 

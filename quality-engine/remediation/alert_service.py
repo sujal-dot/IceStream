@@ -20,69 +20,46 @@ class AlertService(ABC):
     @abstractmethod
     def send_alert(self, incident: Dict[str, Any]) -> bool:
         """Send incident alert payload to external destination.
-        
+
         Returns True if sent successfully, False otherwise.
         """
         pass
 
+    def send_resolution_alert(self, incident: Dict[str, Any]) -> bool:
+        """Send resolution alert payload to external destination. Optional override."""
+        return True
+
 
 class SlackAlertAdapter(AlertService):
-    """Real Slack webhook notification adapter."""
+    """Real Slack webhook notification adapter powered by SlackService."""
 
     def __init__(self, webhook_url: Optional[str] = None):
-        self.webhook_url = webhook_url or os.getenv("SLACK_WEBHOOK_URL")
+        from backend.services.slack_service import SlackService
+        self.slack_service = SlackService(webhook_url=webhook_url)
 
     def format_slack_message(self, incident: Dict[str, Any]) -> Dict[str, Any]:
-        """Construct structured Slack card layout."""
-        incident_id = incident.get("incident_id", "unknown")
-        pipeline_id = incident.get("pipeline_id", "icestream")
-        error_rate = incident.get("error_rate", 0.0)
-        circuit_state = incident.get("circuit_state", "OPEN")
-        failed_count = incident.get("failed_event_count", 0)
-        quarantine_count = incident.get("quarantine_count", 0)
-        status = incident.get("status", "OPEN")
-
-        text_content = (
-            f"*IceStream Pipeline Incident*\n"
-            f"*Pipeline:* {pipeline_id}\n"
-            f"*Incident:* `{incident_id}`\n"
-            f"*Error rate:* {error_rate * 100:.2f}%\n"
-            f"*Circuit:* {circuit_state}\n"
-            f"*Failed events:* {failed_count}\n"
-            f"*Quarantined:* {quarantine_count}\n"
-            f"*Recovery:* {status}"
-        )
-
-        return {"text": text_content}
+        """Construct structured Slack card layout (delegates to SlackService)."""
+        return self.slack_service.format_incident_alert(incident)
 
     def send_alert(self, incident: Dict[str, Any]) -> bool:
-        if not self.webhook_url or "YOUR/WEBHOOK/URL" in self.webhook_url:
+        if not self.slack_service.webhook_url or "YOUR/WEBHOOK/URL" in self.slack_service.webhook_url:
             logger.info(
                 f"[SlackAlertAdapter] Slack webhook URL not configured/placeholder. Logging alert internally: "
                 f"Incident '{incident.get('incident_id')}'"
             )
             return True
 
-        payload = self.format_slack_message(incident)
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            self.webhook_url,
-            data=data,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
+        return self.slack_service.send_incident_alert(incident)
 
-        try:
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                if resp.status in (200, 204):
-                    logger.info(f"[SlackAlertAdapter] Slack alert sent successfully for incident {incident.get('incident_id')}")
-                    return True
-                else:
-                    logger.warning(f"[SlackAlertAdapter] Unexpected response status: {resp.status}")
-                    return False
-        except Exception as e:
-            logger.error(f"[SlackAlertAdapter] Failed to send Slack alert: {e}")
-            return False
+    def send_resolution_alert(self, incident: Dict[str, Any]) -> bool:
+        if not self.slack_service.webhook_url or "YOUR/WEBHOOK/URL" in self.slack_service.webhook_url:
+            logger.info(
+                f"[SlackAlertAdapter] Slack webhook URL not configured/placeholder. Logging resolution alert internally: "
+                f"Incident '{incident.get('incident_id')}'"
+            )
+            return True
+
+        return self.slack_service.send_incident_resolution(incident)
 
 
 class MockAlertService(AlertService):
@@ -90,11 +67,19 @@ class MockAlertService(AlertService):
 
     def __init__(self):
         self.sent_alerts: List[Dict[str, Any]] = []
+        self.sent_resolutions: List[Dict[str, Any]] = []
 
     def send_alert(self, incident: Dict[str, Any]) -> bool:
         self.sent_alerts.append(incident.copy())
         logger.info(f"[MockAlertService] Recorded alert for incident '{incident.get('incident_id')}'")
         return True
 
+    def send_resolution_alert(self, incident: Dict[str, Any]) -> bool:
+        self.sent_resolutions.append(incident.copy())
+        logger.info(f"[MockAlertService] Recorded resolution for incident '{incident.get('incident_id')}'")
+        return True
+
     def clear(self):
         self.sent_alerts.clear()
+        self.sent_resolutions.clear()
+

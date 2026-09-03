@@ -148,7 +148,7 @@ def test_3_incident_creation(controller, circuit_breaker):
         failed_event_count=5,
         quarantine_count=5,
     )
-    assert inc["incident_id"].startswith("inc_")
+    assert inc["incident_id"].lower().startswith("inc")
     assert inc["error_rate"] == 0.05
     assert inc["circuit_state"] == "OPEN"
     assert inc["status"] == "OPEN"

@@ -1,16 +1,19 @@
 """Incidents API Router."""
 
 from typing import Optional
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, status
 
-from backend.models.incidents import IncidentDetailResponse, IncidentListResponse
+from backend.models.incidents import (
+    IncidentActionResponse,
+    IncidentDetailResponse,
+    IncidentListResponse,
+)
 from backend.services.incident_service import IncidentService
 
 router = APIRouter(prefix="/incidents", tags=["Incidents"])
 
 
 def get_incident_service() -> IncidentService:
-    from backend.app import get_db_storage
     return IncidentService()
 
 
@@ -18,15 +21,18 @@ def get_incident_service() -> IncidentService:
     "",
     response_model=IncidentListResponse,
     summary="List Pipeline Incidents",
-    description="Retrieve paginated list of persisted pipeline incidents from PostgreSQL storage.",
+    description="Retrieve paginated list of persisted pipeline incidents from PostgreSQL storage with optional status/severity filters.",
 )
 def list_incidents(
-    status: Optional[str] = Query(None, description="Filter incidents by status e.g. OPEN, RECOVERED, RECOVERY_FAILED"),
+    status: Optional[str] = Query(None, description="Filter incidents by status e.g. OPEN, ACKNOWLEDGED, RESOLVED"),
+    severity: Optional[str] = Query(None, description="Filter incidents by severity e.g. CRITICAL, WARNING, HEALTHY"),
     limit: int = Query(50, ge=1, le=100, description="Number of items to return"),
     offset: int = Query(0, ge=0, description="Number of items to skip"),
 ) -> IncidentListResponse:
     service = get_incident_service()
-    return service.get_incidents(status_filter=status, limit=limit, offset=offset)
+    return service.get_incidents(
+        status_filter=status, severity_filter=severity, limit=limit, offset=offset
+    )
 
 
 @router.get(
@@ -45,3 +51,27 @@ def get_incident_details(incident_id: str) -> IncidentDetailResponse:
         current_circuit_state=cb.state.name,
         current_pipeline_state=sm.current_state.value,
     )
+
+
+@router.post(
+    "/{incident_id}/acknowledge",
+    response_model=IncidentActionResponse,
+    summary="Acknowledge Pipeline Incident",
+    description="Transition incident lifecycle status from OPEN to ACKNOWLEDGED.",
+    status_code=status.HTTP_200_OK,
+)
+def acknowledge_incident(incident_id: str) -> IncidentActionResponse:
+    service = get_incident_service()
+    return service.acknowledge_incident(incident_id=incident_id)
+
+
+@router.post(
+    "/{incident_id}/resolve",
+    response_model=IncidentActionResponse,
+    summary="Resolve Pipeline Incident",
+    description="Transition incident lifecycle status to RESOLVED and send resolution notification.",
+    status_code=status.HTTP_200_OK,
+)
+def resolve_incident(incident_id: str) -> IncidentActionResponse:
+    service = get_incident_service()
+    return service.resolve_incident(incident_id=incident_id)

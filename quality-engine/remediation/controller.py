@@ -109,25 +109,46 @@ class RemediationController:
         quarantine_count: int = 1,
         incident_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Create or fetch incident record in database."""
-        inc_id = incident_id or f"inc_{int(time.time())}"
-        existing = self.storage.get_incident(inc_id)
-        if existing:
-            return existing
+        """Create or fetch incident record in database with deduplication and deterministic IDs."""
+        if incident_id:
+            existing = self.storage.get_incident(incident_id)
+            if existing:
+                return existing
+
+        # Check for existing active incident for pipeline if incident_id was not explicitly specified
+        if not incident_id:
+            active = self.storage.find_active_incident(self.pipeline_id)
+            if active:
+                logger.info(f"[RemediationController] Active incident '{active['incident_id']}' found for '{self.pipeline_id}'. Reusing active incident.")
+                return active
+
+        inc_id = incident_id or self.storage.generate_incident_id()
+        severity = "CRITICAL" if error_rate > 0.02 else ("WARNING" if error_rate >= 0.01 else "HEALTHY")
+        now = datetime.now(timezone.utc)
 
         inc_data = {
             "incident_id": inc_id,
+            "pipeline_name": "checkout-stream",
             "pipeline_id": self.pipeline_id,
-            "created_at": datetime.now(timezone.utc),
+            "created_at": now,
+            "detected_at": now,
+            "updated_at": now,
             "trigger": trigger,
+            "trigger_type": trigger,
             "error_rate": error_rate,
+            "threshold": 0.02,
+            "severity": severity,
             "circuit_state": self.circuit_breaker.state.name,
             "failed_event_count": failed_event_count,
+            "failed_records": failed_event_count,
+            "total_records": 10000,
             "quarantine_count": quarantine_count,
             "status": "OPEN",
+            "action_taken": "Downstream pipeline paused.",
             "recovery_attempt": 0,
             "last_error": None,
             "resolved_at": None,
+            "slack_sent": False,
         }
         return self.storage.create_incident(inc_data)
 

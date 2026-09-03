@@ -90,6 +90,30 @@ The overall system architecture follows an event-driven, stream-first design pat
 - **Role**: Operator notification dispatch.
 - **Responsibility**: Sends real-time webhook notifications when error rate thresholds are breached or when the pipeline circuit breaker trips to `OPEN`.
 
+```text
+Quality Engine
+     │
+     ▼
+Error Rate Engine
+     │
+     ▼
+Circuit Breaker
+     │
+     ▼
+Pipeline State Manager
+     │
+     ▼
+Incident Service
+     │
+     ├──────────────► PostgreSQL (Authoritative Storage)
+     │
+     ▼
+Slack Service (3x Retries + Fault Isolation)
+     │
+     ▼
+Slack Webhook
+```
+
 ### 3.8 Control Plane & Visualization (FastAPI + React / React Flow)
 - **Role**: Observability API and operator dashboard.
 - **Responsibility**: FastAPI backend serves telemetry via REST and WebSockets. React UI renders an interactive React Flow DAG visualization of pipeline health, active quarantine volumes, and circuit breaker status.
