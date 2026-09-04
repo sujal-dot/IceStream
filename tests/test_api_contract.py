@@ -143,13 +143,14 @@ def test_lineage_endpoint(fresh_app):
     assert "nodes" in data
     assert "edges" in data
     nodes = {n["id"]: n for n in data["nodes"]}
-    assert "generator" in nodes
-    assert "kafka-checkout-events" in nodes
-    assert "flink-streaming" in nodes
-    assert "bronze-iceberg" in nodes
+    assert "kafka" in nodes
+    assert "flink" in nodes
     assert "quality-engine" in nodes
-    assert "silver-iceberg" in nodes
-    assert "quarantine-table" in nodes
+    assert "iceberg-bronze" in nodes
+    assert "iceberg-silver" in nodes
+    assert "analytics" in nodes
+    assert "quarantine" in nodes
+    assert "dlq" in nodes
 
 
 def test_quality_endpoint(fresh_app):
