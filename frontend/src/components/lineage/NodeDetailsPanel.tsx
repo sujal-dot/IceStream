@@ -1,0 +1,177 @@
+import React from 'react';
+import { X, Server, Layers, ShieldCheck, Tag, Info, ArrowRight } from 'lucide-react';
+import { ApiLineageNode, ApiLineageEdge } from '../../types/lineage';
+import { getStatusStyle } from '../../utils/statusStyles';
+
+interface NodeDetailsPanelProps {
+  node: ApiLineageNode | null;
+  edges: ApiLineageEdge[];
+  nodes: ApiLineageNode[];
+  onClose: () => void;
+}
+
+export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
+  node,
+  edges,
+  nodes,
+  onClose,
+}) => {
+  if (!node) return null;
+
+  const statusStyle = getStatusStyle(node.status);
+  const details = node.details || {};
+
+  // Find downstream target node labels
+  const downstreamNodeIds = edges
+    .filter((e) => e.source === node.id)
+    .map((e) => e.target);
+
+  const downstreamNodes = nodes.filter((n) => downstreamNodeIds.includes(n.id));
+
+  // Find upstream source node labels
+  const upstreamNodeIds = edges
+    .filter((e) => e.target === node.id)
+    .map((e) => e.source);
+
+  const upstreamNodes = nodes.filter((n) => upstreamNodeIds.includes(n.id));
+
+  return (
+    <div className="fixed inset-y-0 right-0 w-80 sm:w-96 bg-slate-900/95 border-l border-slate-800 shadow-2xl backdrop-blur-xl z-50 flex flex-col transition-all duration-300 transform translate-x-0">
+      {/* Drawer Header */}
+      <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-950/60">
+        <div className="flex items-center gap-2 overflow-hidden">
+          <Server className="w-4 h-4 text-sky-400 shrink-0" />
+          <h2 className="font-bold text-sm text-slate-100 truncate">{node.label}</h2>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+          title="Close Details Panel"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* Drawer Content Body */}
+      <div className="flex-1 overflow-y-auto p-5 space-y-6">
+        {/* Status Section */}
+        <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span
+              className="w-3 h-3 rounded-full animate-pulse"
+              style={{ backgroundColor: statusStyle.dotBg }}
+            />
+            <span className="text-xs font-semibold text-slate-300">Runtime Health</span>
+          </div>
+          <span
+            className="px-2 py-0.5 rounded font-mono text-xs font-semibold"
+            style={{
+              backgroundColor: statusStyle.badgeBg,
+              color: statusStyle.badgeText,
+            }}
+          >
+            {statusStyle.label}
+          </span>
+        </div>
+
+        {/* Basic Node Spec */}
+        <div className="space-y-3">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+            <Tag className="w-3.5 h-3.5 text-sky-400" />
+            Component Spec
+          </h3>
+          <div className="rounded-xl bg-slate-950/60 border border-slate-800/80 p-3.5 space-y-2.5 text-xs font-mono">
+            <div className="flex justify-between">
+              <span className="text-slate-500">Node ID:</span>
+              <span className="text-slate-200 font-semibold">{node.id}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">Component Type:</span>
+              <span className="text-sky-400 uppercase font-semibold">{node.type}</span>
+            </div>
+            {details.description && (
+              <div className="pt-2 border-t border-slate-800/60 font-sans text-slate-300 leading-relaxed">
+                {details.description}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Key Metadata Details */}
+        {Object.keys(details).length > 0 && (
+          <div className="space-y-3">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+              <Info className="w-3.5 h-3.5 text-indigo-400" />
+              Runtime Parameters
+            </h3>
+            <div className="rounded-xl bg-slate-950/60 border border-slate-800/80 divide-y divide-slate-800/60 text-xs font-mono">
+              {Object.entries(details).map(([key, val]) => {
+                if (key === 'description') return null;
+                return (
+                  <div key={key} className="p-3 flex items-center justify-between gap-4">
+                    <span className="text-slate-500 capitalize">{key.replace(/_/g, ' ')}</span>
+                    <span className="text-slate-200 text-right truncate max-w-[180px]" title={val}>
+                      {val}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Upstream Components */}
+        {upstreamNodes.length > 0 && (
+          <div className="space-y-3">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+              <Layers className="w-3.5 h-3.5 text-emerald-400" />
+              Upstream Sources
+            </h3>
+            <div className="space-y-1.5">
+              {upstreamNodes.map((uNode) => (
+                <div
+                  key={uNode.id}
+                  className="flex items-center gap-2 p-2.5 rounded-lg bg-slate-950/60 border border-slate-800/80 text-xs text-slate-300"
+                >
+                  <ArrowRight className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span className="font-semibold text-slate-200">{uNode.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Downstream Components */}
+        {downstreamNodes.length > 0 && (
+          <div className="space-y-3">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-sky-400" />
+              Downstream Targets
+            </h3>
+            <div className="space-y-1.5">
+              {downstreamNodes.map((dNode) => (
+                <div
+                  key={dNode.id}
+                  className="flex items-center gap-2 p-2.5 rounded-lg bg-slate-950/60 border border-slate-800/80 text-xs text-slate-300"
+                >
+                  <ArrowRight className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                  <span className="font-semibold text-slate-200">{dNode.label}</span>
+                  {dNode.id === 'quarantine' || dNode.id === 'dlq' ? (
+                    <span className="ml-auto font-mono text-[10px] text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+                      Failure Branch
+                    </span>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Drawer Footer */}
+      <div className="p-4 border-t border-slate-800 bg-slate-950/80 text-[11px] text-slate-500 text-center font-mono">
+        IceStream Telemetry • Real-Time Lineage Inspector
+      </div>
+    </div>
+  );
+};
