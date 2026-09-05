@@ -27,8 +27,10 @@ class MetricsService:
         now_iso = datetime.now(timezone.utc).isoformat()
         windows_dict: Dict[str, WindowMetricsModel] = {}
 
+        history_points = []
         if self.error_rate_engine:
             snapshot = self.error_rate_engine.get_metrics_snapshot()
+            history_points = snapshot.get("history", [])
             raw_windows = snapshot.get("windows", {})
             for w_name, w_data in raw_windows.items():
                 windows_dict[w_name] = WindowMetricsModel(
@@ -72,4 +74,5 @@ class MetricsService:
             circuit_breaker=cb_model,
             remediation=rem_model,
             pipeline_state=pipe_state,
+            history=history_points,
         )

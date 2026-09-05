@@ -122,6 +122,7 @@ class ErrorRateEngine:
         self._clock = clock or SystemClock()
         self._lock = threading.Lock()
         self._last_health_state: Dict[int, HealthStatus] = {}
+        self._history: List[Dict[str, Any]] = []
 
         self._window_aggregators: Dict[int, WindowAggregator] = {
             w: WindowAggregator(window_seconds=w, clock=self._clock)
@@ -138,6 +139,7 @@ class ErrorRateEngine:
             for agg in self._window_aggregators.values():
                 agg.reset()
             self._last_health_state.clear()
+            self._history.clear()
 
     def record_event_outcome(
         self,
@@ -269,6 +271,23 @@ class ErrorRateEngine:
         m1 = self.calculate(window_seconds=60, ref_time=now_dt)
         m5 = self.calculate(window_seconds=300, ref_time=now_dt)
 
+        with self._lock:
+            # Append snapshot to history if total events > 0 or history is empty/updated
+            point = {
+                "timestamp": now_iso,
+                "error_rate": m1.error_rate,
+                "error_rate_percent": round(m1.error_rate_percent, 4),
+                "total_events": m1.total_events,
+                "failed_events": m1.failed_events,
+                "health": m1.health_status.value if isinstance(m1.health_status, Enum) else str(m1.health_status),
+            }
+            if not self._history or self._history[-1]["timestamp"] != now_iso:
+                self._history.append(point)
+                if len(self._history) > 60:
+                    self._history.pop(0)
+
+            history_copy = list(self._history)
+
         return {
             "service": "icestream-quality-engine",
             "status": "ok",
@@ -277,4 +296,5 @@ class ErrorRateEngine:
                 "1m": m1.to_dict(),
                 "5m": m5.to_dict(),
             },
+            "history": history_copy,
         }

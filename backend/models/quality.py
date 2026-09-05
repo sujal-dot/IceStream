@@ -30,3 +30,4 @@ class QualityResponse(BaseModel):
     valid_events: int = 0
     failed_events: int = 0
     current_error_rate: float = 0.0
+    top_failures: Optional[Dict[str, int]] = Field(default_factory=dict)

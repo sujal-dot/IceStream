@@ -1,6 +1,6 @@
 """Metrics API response models."""
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -49,3 +49,4 @@ class MetricsResponse(BaseModel):
     circuit_breaker: CircuitBreakerMetricsModel
     remediation: RemediationMetricsModel
     pipeline_state: Optional[Dict[str, Any]] = None
+    history: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
