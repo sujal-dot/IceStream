@@ -114,7 +114,7 @@ def test_kafka_fault_injection_integration():
     consumer_config = {
         "bootstrap.servers": bootstrap_server,
         "group.id": test_group,
-        "auto.offset.reset": "latest",
+        "auto.offset.reset": "earliest",
         "enable.auto.commit": False,
     }
 
