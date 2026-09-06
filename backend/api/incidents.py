@@ -1,7 +1,7 @@
 """Incidents API Router."""
 
 from typing import Optional
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Depends, Query, status
 
 from backend.models.incidents import (
     IncidentActionResponse,
@@ -9,6 +9,7 @@ from backend.models.incidents import (
     IncidentListResponse,
 )
 from backend.services.incident_service import IncidentService
+from backend.security import verify_api_token
 
 router = APIRouter(prefix="/incidents", tags=["Incidents"])
 
@@ -59,6 +60,7 @@ def get_incident_details(incident_id: str) -> IncidentDetailResponse:
     summary="Acknowledge Pipeline Incident",
     description="Transition incident lifecycle status from OPEN to ACKNOWLEDGED.",
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(verify_api_token)],
 )
 def acknowledge_incident(incident_id: str) -> IncidentActionResponse:
     service = get_incident_service()
@@ -71,6 +73,7 @@ def acknowledge_incident(incident_id: str) -> IncidentActionResponse:
     summary="Resolve Pipeline Incident",
     description="Transition incident lifecycle status to RESOLVED and send resolution notification.",
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(verify_api_token)],
 )
 def resolve_incident(incident_id: str) -> IncidentActionResponse:
     service = get_incident_service()

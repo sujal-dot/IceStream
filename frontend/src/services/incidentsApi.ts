@@ -5,6 +5,17 @@ import {
 } from '../types/dashboard';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const API_TOKEN = import.meta.env.VITE_ICESTREAM_API_TOKEN || '';
+
+const getAuthHeaders = (): Record<string, string> => {
+  const headers: Record<string, string> = {
+    'Accept': 'application/json',
+  };
+  if (API_TOKEN) {
+    headers['Authorization'] = `Bearer ${API_TOKEN}`;
+  }
+  return headers;
+};
 
 export class IncidentsApiService {
   /**
@@ -60,9 +71,7 @@ export class IncidentsApiService {
   static async acknowledgeIncident(incidentId: string): Promise<IncidentActionResponse> {
     const response = await fetch(`${BASE_URL}/incidents/${encodeURIComponent(incidentId)}/acknowledge`, {
       method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-      },
+      headers: getAuthHeaders(),
     });
 
     if (!response.ok) {
@@ -81,9 +90,7 @@ export class IncidentsApiService {
   static async resolveIncident(incidentId: string): Promise<IncidentActionResponse> {
     const response = await fetch(`${BASE_URL}/incidents/${encodeURIComponent(incidentId)}/resolve`, {
       method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-      },
+      headers: getAuthHeaders(),
     });
 
     if (!response.ok) {

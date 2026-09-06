@@ -1,6 +1,18 @@
 import { PipelineStatusResponse } from '../types/dashboard';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const API_TOKEN = import.meta.env.VITE_ICESTREAM_API_TOKEN || '';
+
+const getAuthHeaders = (): Record<string, string> => {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+  };
+  if (API_TOKEN) {
+    headers['Authorization'] = `Bearer ${API_TOKEN}`;
+  }
+  return headers;
+};
 
 export class PipelineApiService {
   /**
@@ -27,10 +39,7 @@ export class PipelineApiService {
   static async pause(reason?: string): Promise<any> {
     const response = await fetch(`${BASE_URL}/pipeline/pause`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ reason }),
     });
 
@@ -48,10 +57,7 @@ export class PipelineApiService {
   static async resume(reason?: string): Promise<any> {
     const response = await fetch(`${BASE_URL}/pipeline/resume`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ reason }),
     });
 
@@ -69,10 +75,7 @@ export class PipelineApiService {
   static async recover(incidentId?: string): Promise<any> {
     const response = await fetch(`${BASE_URL}/pipeline/recover`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ incident_id: incidentId }),
     });
 

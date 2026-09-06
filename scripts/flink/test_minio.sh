@@ -8,7 +8,7 @@ FLINK_JOBMANAGER_HOST="${FLINK_JOBMANAGER_HOST:-localhost}"
 FLINK_PORT="${FLINK_JOB_MANAGER_PORT:-8081}"
 MINIO_CONTAINER_NAME="${MINIO_CONTAINER_NAME:-icestream-minio}"
 MINIO_USER="${MINIO_ROOT_USER:-icestream_minio}"
-MINIO_PASS="${MINIO_ROOT_PASSWORD:-icestream_minio_secret}"
+MINIO_PASS="${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD environment variable is required}"
 
 echo "=================================================="
 echo "IceStream Day 8 — Flink -> MinIO Connectivity Test"

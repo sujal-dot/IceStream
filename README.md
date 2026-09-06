@@ -31,7 +31,21 @@ cp .env.example .env
 - **FastAPI Telemetry Backend**: [http://localhost:8000](http://localhost:8000) (Docs: [http://localhost:8000/docs](http://localhost:8000/docs))
 - **Grafana Monitoring**: [http://localhost:3000](http://localhost:3000) (admin / admin)
 - **Flink Dashboard**: [http://localhost:8081](http://localhost:8081)
-- **MinIO Console**: [http://localhost:9001](http://localhost:9001) (`icestream_minio` / `icestream_minio_secret`)
+- **MinIO Console**: [http://localhost:9001](http://localhost:9001)
+
+### Security & API Authentication
+
+State-modifying API endpoints (`/pipeline/pause`, `/pipeline/resume`, `/pipeline/recover`, `/pipeline/remediate`, `/incidents/{id}/acknowledge`, `/incidents/{id}/resolve`) require Bearer token authentication configured via `ICESTREAM_API_TOKEN`.
+
+```bash
+# Example authenticated request:
+curl -H "Authorization: Bearer $ICESTREAM_API_TOKEN" \
+     -X POST http://localhost:8000/pipeline/pause
+```
+
+### PostgreSQL Port Mapping
+- Host access: `localhost:5433` (`POSTGRES_PORT=5433`)
+- Container internal access: `postgres:5432` (Docker internal network)
 
 ### Simulate Event Stream (Generator)
 

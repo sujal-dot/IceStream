@@ -9,8 +9,8 @@ from io import BytesIO
 
 
 MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT_HOST", "localhost:9000")
-MINIO_ACCESS_KEY = os.getenv("MINIO_ROOT_USER", "icestream_minio")
-MINIO_SECRET_KEY = os.getenv("MINIO_ROOT_PASSWORD", "icestream_minio_secret")
+MINIO_ACCESS_KEY = os.getenv("MINIO_ROOT_USER") or os.getenv("MINIO_ACCESS_KEY") or "test_minio_user"
+MINIO_SECRET_KEY = os.getenv("MINIO_ROOT_PASSWORD") or os.getenv("MINIO_SECRET_KEY") or "test_minio_secret"
 SECURE = False
 
 

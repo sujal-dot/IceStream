@@ -189,20 +189,23 @@ def test_schema_drift_endpoint(fresh_app):
     assert drift_data["changes"][0]["field"] == "amount"
 
 
+AUTH_HEADERS = {"Authorization": "Bearer test_api_token_secret_12345"}
+
+
 def test_pipeline_pause_and_resume(fresh_app):
     client, state_mgr, _, _, _, _ = fresh_app
     # Pause pipeline
-    resp_pause = client.post("/pipeline/pause")
+    resp_pause = client.post("/pipeline/pause", headers=AUTH_HEADERS)
     assert resp_pause.status_code == 200
     assert resp_pause.json()["state"] == "PAUSED"
     assert client.get("/pipeline/status").json()["state"] == "PAUSED"
 
     # Pause again (idempotent)
-    resp_pause2 = client.post("/pipeline/pause")
+    resp_pause2 = client.post("/pipeline/pause", headers=AUTH_HEADERS)
     assert resp_pause2.status_code == 200
 
     # Resume pipeline
-    resp_resume = client.post("/pipeline/resume")
+    resp_resume = client.post("/pipeline/resume", headers=AUTH_HEADERS)
     assert resp_resume.status_code == 200
     assert resp_resume.json()["state"] == "RUNNING"
     assert client.get("/pipeline/status").json()["state"] == "RUNNING"
@@ -214,7 +217,7 @@ def test_resume_blocked_by_open_circuit(fresh_app):
     breaker.evaluate(0.05)
     assert breaker.state == CircuitState.OPEN
 
-    resp_resume = client.post("/pipeline/resume")
+    resp_resume = client.post("/pipeline/resume", headers=AUTH_HEADERS)
     assert resp_resume.status_code == 409
     data = resp_resume.json()
     assert "PIPELINE_PROTECTED" in str(data)
@@ -227,7 +230,7 @@ def test_pipeline_recover(fresh_app):
     state_mgr.transition_to(to_state=PipelineState.CIRCUIT_OPEN, reason="High error rate", incident_id=inc["incident_id"])
     breaker.evaluate(0.05)
 
-    resp_rec = client.post("/pipeline/recover", json={"incident_id": inc["incident_id"]})
+    resp_rec = client.post("/pipeline/recover", json={"incident_id": inc["incident_id"]}, headers=AUTH_HEADERS)
     assert resp_rec.status_code == 200
     rec_data = resp_rec.json()
     assert rec_data["incident_id"] == inc["incident_id"]

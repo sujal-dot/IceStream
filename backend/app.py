@@ -10,9 +10,11 @@ import os
 import sys
 from typing import Any, Dict, Optional
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+
+from backend.security import verify_api_token
 
 # Ensure quality-engine directory is on sys.path for metrics & remediation imports
 QUALITY_ENGINE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "quality-engine"))
@@ -198,6 +200,7 @@ def create_app(
         tags=["Pipeline"],
         summary="Trigger Automated Remediation (Legacy Alias)",
         description="Execute self-healing remediation workflow for an incident.",
+        dependencies=[Depends(verify_api_token)],
     )
     def trigger_remediation(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Trigger backend remediation execution."""

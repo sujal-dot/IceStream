@@ -6,7 +6,7 @@ set -euo pipefail
 
 MINIO_CONTAINER_NAME="${MINIO_CONTAINER_NAME:-icestream-minio}"
 MINIO_USER="${MINIO_ROOT_USER:-icestream_minio}"
-MINIO_PASS="${MINIO_ROOT_PASSWORD:-icestream_minio_secret}"
+MINIO_PASS="${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD environment variable is required}"
 MINIO_URL="${MINIO_INTERNAL_URL:-http://localhost:9000}"
 
 BUCKETS=("warehouse" "checkpoints" "schemas" "logs")

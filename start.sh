@@ -166,7 +166,7 @@ show_status() {
     check_service_status "Flink JobManager" "curl -sf http://localhost:8081/v1/overview" "http://localhost:8081"
     check_service_status "MinIO S3" "curl -sf http://localhost:9000/minio/health/live" "http://localhost:9000 (Console: :9001)"
     check_service_status "Iceberg REST" "curl -sf http://localhost:8181/v1/config" "http://localhost:8181"
-    check_service_status "PostgreSQL" "docker exec icestream-postgres pg_isready -U icestream_user -d icestream_db" "localhost:5432"
+    check_service_status "PostgreSQL" "docker exec icestream-postgres pg_isready -U ${POSTGRES_USER:-icestream_user} -d ${POSTGRES_DB:-icestream_db}" "localhost:${POSTGRES_PORT:-5433}"
     check_service_status "Prometheus" "curl -sf http://localhost:9090/-/healthy" "http://localhost:9090"
     check_service_status "Grafana" "curl -sf http://localhost:3000/api/health" "http://localhost:3000"
 
@@ -272,6 +272,12 @@ fi
 set -a
 source .env
 set +a
+
+if [ -z "${POSTGRES_PASSWORD:-}" ] || [ -z "${MINIO_ROOT_PASSWORD:-}" ] || [ -z "${ICESTREAM_API_TOKEN:-}" ]; then
+    echo -e "${RED}[ERROR] Required secrets (POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD, ICESTREAM_API_TOKEN) must be configured in .env.${NC}" >&2
+    exit 1
+fi
+
 echo -e "${GREEN}✓ Environment variables loaded from .env.${NC}\n"
 
 # [3/7] Starting Infrastructure via Docker Compose
@@ -428,7 +434,7 @@ echo -e "  Kafka Broker     ${GREEN}✓${NC} (localhost:9092)"
 echo -e "  Flink JobManager ${GREEN}✓${NC} (http://localhost:8081)"
 echo -e "  MinIO S3 Store   ${GREEN}✓${NC} (http://localhost:9000 | Console: :9001)"
 echo -e "  Iceberg Catalog  ${GREEN}✓${NC} (http://localhost:8181)"
-echo -e "  PostgreSQL DB    ${GREEN}✓${NC} (localhost:5432)"
+echo -e "  PostgreSQL DB    ${GREEN}✓${NC} (localhost:${POSTGRES_PORT:-5433})"
 echo -e "  Prometheus       ${GREEN}✓${NC} (http://localhost:9090)"
 echo -e "  Grafana          ${GREEN}✓${NC} (http://localhost:3000)"
 
@@ -442,7 +448,7 @@ echo -e "  Dashboard UI:    http://localhost:5173"
 echo -e "  API Docs:        http://localhost:8000/docs"
 echo -e "  Grafana:         http://localhost:3000 (admin/admin)"
 echo -e "  Flink Dashboard: http://localhost:8081"
-echo -e "  MinIO Console:   http://localhost:9001 (icestream_minio/icestream_minio_secret)"
+echo -e "  MinIO Console:   http://localhost:9001"
 
 echo -e "\nEvent Generator (Run in separate terminal to simulate telemetry):"
 echo -e "  ${YELLOW}PYTHONPATH=. .venv/bin/python generator/main.py --rate 1000 --error-rate 0.2 --metrics-port 8002${NC}"

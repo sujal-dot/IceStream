@@ -148,7 +148,8 @@ def test_day23_full_backend_integration_lifecycle():
 
     # 5. Trigger self-healing recovery via API
     source_adapter.set_default_recovery_events(corrected_events)  # Fix source data for re-fetch
-    recover_res = client.post("/pipeline/recover", json={"incident_id": inc_id})
+    auth_headers = {"Authorization": f"Bearer {os.environ.get('ICESTREAM_API_TOKEN', 'test_api_token_secret_12345')}"}
+    recover_res = client.post("/pipeline/recover", json={"incident_id": inc_id}, headers=auth_headers)
     assert recover_res.status_code == 200
     assert recover_res.json()["status"] == "STARTED"
 

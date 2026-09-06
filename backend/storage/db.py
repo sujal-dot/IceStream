@@ -17,20 +17,34 @@ class StorageBackend:
 
     def __init__(self, db_uri: Optional[str] = None, use_sqlite: bool = False):
         self.use_sqlite = use_sqlite
-        self.db_uri = db_uri or os.getenv(
-            "DATABASE_URL",
-            "postgresql://icestream_user:icestream_password@localhost:5432/icestream_db",
-        )
         self._sqlite_conn: Optional[sqlite3.Connection] = None
 
-        if self.use_sqlite or "sqlite" in self.db_uri:
+        env_db_url = os.getenv("DATABASE_URL")
+        if db_uri:
+            self.db_uri = db_uri
+        elif env_db_url:
+            self.db_uri = env_db_url
+        elif not self.use_sqlite:
+            user = os.getenv("POSTGRES_USER", "icestream_user")
+            password = os.getenv("POSTGRES_PASSWORD")
+            host = os.getenv("POSTGRES_HOST", "127.0.0.1")
+            port = os.getenv("POSTGRES_PORT", "5433")
+            dbname = os.getenv("POSTGRES_DB", "icestream_db")
+            if password:
+                self.db_uri = f"postgresql://{user}:{password}@{host}:{port}/{dbname}"
+            else:
+                self.db_uri = ""
+        else:
+            self.db_uri = ""
+
+        if self.use_sqlite or "sqlite" in self.db_uri or not self.db_uri:
             self.use_sqlite = True
             # SQLite connection setup (check_same_thread=False for multithreaded test access)
             self._sqlite_conn = sqlite3.connect(":memory:", check_same_thread=False)
             self._sqlite_conn.row_factory = sqlite3.Row
             logger.info("StorageBackend initialized with SQLite in-memory database")
         else:
-            logger.info(f"StorageBackend initialized with PostgreSQL at {self.db_uri.split('@')[-1]}")
+            logger.info(f"StorageBackend initialized with PostgreSQL at {self.db_uri.split('@')[-1] if '@' in self.db_uri else 'configured target'}")
 
         self._init_tables()
 
@@ -40,11 +54,13 @@ class StorageBackend:
         else:
             import psycopg2
             import psycopg2.extras
-            host = os.getenv("POSTGRES_HOST", "localhost")
-            port = int(os.getenv("POSTGRES_PORT", "5432"))
+            host = os.getenv("POSTGRES_HOST", "127.0.0.1")
+            port = int(os.getenv("POSTGRES_PORT", "5433"))
             dbname = os.getenv("POSTGRES_DB", "icestream_db")
             user = os.getenv("POSTGRES_USER", "icestream_user")
-            password = os.getenv("POSTGRES_PASSWORD", "icestream_password")
+            password = os.getenv("POSTGRES_PASSWORD")
+            if not password:
+                raise ValueError("POSTGRES_PASSWORD environment variable is required for PostgreSQL connection.")
             return psycopg2.connect(
                 host=host,
                 port=port,
