@@ -3,6 +3,44 @@
 [![Project Status: Phase 1 Architecture](https://img.shields.io/badge/Project_Status-Phase_1:_Architecture_%26_Environment-blue.svg)](#project-status)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+## Quick Start
+
+Start the entire IceStream platform with a single command:
+
+```bash
+# 1. Clone repository
+git clone https://github.com/icestream/icestream.git
+cd IceStream
+
+# 2. Copy environment template
+cp .env.example .env
+
+# 3. Start IceStream
+./start.sh
+```
+
+### Management Commands
+
+- **Check Service Status**: `./start.sh --status`
+- **View Container Logs**: `./start.sh --logs`
+- **Stop IceStream (Preserves Data)**: `./start.sh --stop`
+
+### Service Endpoints
+
+- **React Observability Dashboard**: [http://localhost:5173](http://localhost:5173)
+- **FastAPI Telemetry Backend**: [http://localhost:8000](http://localhost:8000) (Docs: [http://localhost:8000/docs](http://localhost:8000/docs))
+- **Grafana Monitoring**: [http://localhost:3000](http://localhost:3000) (admin / admin)
+- **Flink Dashboard**: [http://localhost:8081](http://localhost:8081)
+- **MinIO Console**: [http://localhost:9001](http://localhost:9001) (`icestream_minio` / `icestream_minio_secret`)
+
+### Simulate Event Stream (Generator)
+
+To simulate telemetry with bad data injection, run in a separate terminal:
+
+```bash
+PYTHONPATH=. .venv/bin/python generator/main.py --rate 1000 --error-rate 0.2 --metrics-port 8002
+```
+
 ---
 
 ## 1. Project Description
