@@ -14,9 +14,9 @@ os.environ.setdefault("POSTGRES_PORT", "5433")
 os.environ.setdefault("POSTGRES_DB", "icestream_db")
 
 os.environ.setdefault("MINIO_ROOT_USER", "icestream_minio")
-os.environ.setdefault("MINIO_ROOT_PASSWORD", "icestream_minio_secret")
+os.environ.setdefault("MINIO_ROOT_PASSWORD", "change-me-minio-secret")
 os.environ.setdefault("MINIO_ACCESS_KEY", "icestream_minio")
-os.environ.setdefault("MINIO_SECRET_KEY", "icestream_minio_secret")
+os.environ.setdefault("MINIO_SECRET_KEY", "change-me-minio-secret")
 os.environ.setdefault("MINIO_ENDPOINT", "http://localhost:9000")
 
 os.environ.setdefault("ICESTREAM_API_TOKEN", "test_api_token_secret_12345")
@@ -32,5 +32,5 @@ def setup_test_env():
     os.environ["POSTGRES_DB"] = os.environ.get("POSTGRES_DB", "icestream_db")
 
     os.environ["MINIO_ROOT_USER"] = os.environ.get("MINIO_ROOT_USER", "icestream_minio")
-    os.environ["MINIO_ROOT_PASSWORD"] = os.environ.get("MINIO_ROOT_PASSWORD", "icestream_minio_secret")
+    os.environ["MINIO_ROOT_PASSWORD"] = os.environ.get("MINIO_ROOT_PASSWORD", "change-me-minio-secret")
     os.environ["ICESTREAM_API_TOKEN"] = os.environ.get("ICESTREAM_API_TOKEN", "test_api_token_secret_12345")

@@ -14,7 +14,7 @@ CREATE CATALOG icestream WITH (
   's3.region'='us-east-1',
   'client.region'='us-east-1',
   's3.access-key-id'='icestream_minio',
-  's3.secret-access-key'='icestream_minio_secret'
+  's3.secret-access-key'='change-me-minio-secret'
 );
 
 USE CATALOG icestream;
@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS checkout_events (
 -- 3. Configure Streaming Runtime, Checkpointing & Restart Strategy Settings
 SET 'execution.runtime-mode' = 'streaming';
 SET 'table.dml-sync' = 'false';
-SET 'execution.checkpointing.interval' = '30000ms';
+SET 'execution.checkpointing.interval' = '5000ms';
 SET 'execution.checkpointing.mode' = 'EXACTLY_ONCE';
 SET 'execution.checkpointing.timeout' = '60000ms';
 SET 'execution.checkpointing.min-pause' = '500ms';

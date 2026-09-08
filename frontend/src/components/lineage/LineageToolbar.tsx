@@ -1,5 +1,5 @@
 import React from 'react';
-import { RefreshCw, Maximize2, RotateCcw, Activity } from 'lucide-react';
+import { RefreshCw, Maximize2, RotateCcw, Activity, ArrowLeft } from 'lucide-react';
 import { PipelineSummary } from '../../types/lineage';
 
 interface LineageToolbarProps {
@@ -10,6 +10,7 @@ interface LineageToolbarProps {
   onRefresh: () => void;
   onFitView?: () => void;
   onResetLayout?: () => void;
+  onBack?: () => void;
 }
 
 export const LineageToolbar: React.FC<LineageToolbarProps> = ({
@@ -20,6 +21,7 @@ export const LineageToolbar: React.FC<LineageToolbarProps> = ({
   onRefresh,
   onFitView,
   onResetLayout,
+  onBack,
 }) => {
   const isHealthy = !pipelineSummary || pipelineSummary.circuit_breaker_state === 'CLOSED';
 
@@ -27,6 +29,16 @@ export const LineageToolbar: React.FC<LineageToolbarProps> = ({
     <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-xl bg-slate-900/80 border border-slate-800/80 backdrop-blur-md mb-4 shadow-lg">
       {/* Title & Stream Pill */}
       <div className="flex items-center gap-3">
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold border border-slate-700/80 transition-all shadow-sm group"
+            title="Back to Dashboard"
+          >
+            <ArrowLeft className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
+            <span className="hidden sm:inline">Back to Dashboard</span>
+          </button>
+        )}
         <div className="p-2 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-400">
           <Activity className="w-5 h-5" />
         </div>
@@ -57,19 +69,21 @@ export const LineageToolbar: React.FC<LineageToolbarProps> = ({
             <span className="text-slate-500">Circuit: </span>
             <span
               className={
-                pipelineSummary.circuit_breaker_state === 'CLOSED'
+                (pipelineSummary.circuit_breaker_state || 'CLOSED') === 'CLOSED'
                   ? 'text-emerald-400 font-semibold'
                   : 'text-rose-400 font-semibold'
               }
             >
-              {pipelineSummary.circuit_breaker_state}
+              {pipelineSummary.circuit_breaker_state || 'CLOSED'}
             </span>
           </div>
           <div className="h-3 w-px bg-slate-800" />
           <div>
             <span className="text-slate-500">Error Rate: </span>
             <span className="text-slate-200">
-              {(pipelineSummary.error_rate * 100).toFixed(2)}%
+              {typeof pipelineSummary.error_rate === 'number'
+                ? (pipelineSummary.error_rate * 100).toFixed(2)
+                : '0.00'}%
             </span>
           </div>
         </div>

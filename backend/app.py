@@ -102,6 +102,72 @@ def set_remediation_controller(controller: Optional[RemediationController]) -> N
     _global_remediation_controller = controller
 
 
+import threading
+
+_telemetry_thread_started = False
+_telemetry_thread_lock = threading.Lock()
+
+
+def _start_kafka_telemetry_listener() -> None:
+    """Start background daemon thread consuming checkout-events to update ErrorRateEngine in real time."""
+    global _telemetry_thread_started
+    if os.getenv("TESTING", "").lower() in ("true", "1") or "pytest" in sys.modules:
+        logger.info("Kafka telemetry consumer skipped in test environment.")
+        return
+
+    with _telemetry_thread_lock:
+        if _telemetry_thread_started:
+            return
+        _telemetry_thread_started = True
+
+    def _telemetry_consumer_loop():
+        try:
+            from confluent_kafka import Consumer, KafkaError
+            import json
+            from rules.engine import QualityEngine
+            from rules.registry import create_default_registry
+            from rules.base import EventStatus
+
+            bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "127.0.0.1:9092")
+            consumer = Consumer({
+                "bootstrap.servers": bootstrap_servers,
+                "group.id": "icestream-backend-telemetry-group",
+                "auto.offset.reset": "latest",
+                "enable.auto.commit": True,
+            })
+            consumer.subscribe(["checkout-events"])
+            quality_engine = QualityEngine(registry=create_default_registry())
+            logger.info("Kafka telemetry consumer started on topic 'checkout-events' at %s", bootstrap_servers)
+
+            while True:
+                msg = consumer.poll(timeout=1.0)
+                if msg is None:
+                    continue
+                if msg.error():
+                    if msg.error().code() != KafkaError._PARTITION_EOF:
+                        logger.warning("Kafka telemetry consumer error: %s", msg.error())
+                    continue
+
+                engine = get_error_rate_engine()
+                try:
+                    payload = json.loads(msg.value().decode("utf-8"))
+                    is_faulty = payload.get("is_corrupted", False) or payload.get("_icestream_fault", False)
+                    amt = payload.get("amount")
+                    curr = payload.get("currency")
+                    cust = payload.get("customer_id")
+                    if amt is None or (isinstance(amt, (int, float)) and amt <= 0) or not cust or curr == "INVALID":
+                        is_faulty = True
+
+                    engine.record_event_outcome(is_valid=not is_faulty)
+                except Exception:
+                    engine.record_event_outcome(is_valid=False)
+        except Exception as e:
+            logger.warning("Kafka telemetry background consumer stopped: %s", e)
+
+    t = threading.Thread(target=_telemetry_consumer_loop, daemon=True, name="KafkaTelemetryListener")
+    t.start()
+
+
 def create_app(
     engine: Optional[ErrorRateEngine] = None,
     breaker: Optional[CircuitBreaker] = None,
@@ -117,6 +183,9 @@ def create_app(
         set_state_manager(state_manager)
     if controller is not None:
         set_remediation_controller(controller)
+
+    # Start Kafka telemetry listener daemon
+    _start_kafka_telemetry_listener()
 
     app = FastAPI(
         title="IceStream Observability Telemetry API",

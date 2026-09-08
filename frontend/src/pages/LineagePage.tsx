@@ -1,13 +1,23 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AlertCircle, RefreshCw, Layers } from 'lucide-react';
 import { ApiLineageResponse, ApiLineageNode, PipelineSummary } from '../types/lineage';
+import { PipelineStatusResponse } from '../types/dashboard';
 import { LineageApiService } from '../services/lineageApi';
+import { Header } from '../components/dashboard/Header';
 import { LineageToolbar } from '../components/lineage/LineageToolbar';
 import { LineageCanvas } from '../components/lineage/LineageCanvas';
 import { NodeDetailsPanel } from '../components/lineage/NodeDetailsPanel';
 import { LineageLegend } from '../components/lineage/LineageLegend';
 
-export const LineagePage: React.FC = () => {
+interface LineagePageProps {
+  activeView?: 'dashboard' | 'lineage' | 'incidents';
+  onSelectView?: (view: 'dashboard' | 'lineage' | 'incidents') => void;
+}
+
+export const LineagePage: React.FC<LineagePageProps> = ({
+  activeView = 'lineage',
+  onSelectView = () => {},
+}) => {
   const [lineageData, setLineageData] = useState<ApiLineageResponse | null>(null);
   const [pipelineSummary, setPipelineSummary] = useState<PipelineSummary | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -45,25 +55,51 @@ export const LineagePage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    fetchLineage();
+    fetchLineage(false);
+    const intervalId = setInterval(() => {
+      fetchLineage(true);
+    }, 1000);
+    return () => clearInterval(intervalId);
   }, [fetchLineage]);
 
   // Selected node object lookup
-  const selectedNode: ApiLineageNode | null = React.useMemo(() => {
+  const selectedNode: ApiLineageNode | null = useMemo(() => {
     if (!lineageData || !selectedNodeId) return null;
     return lineageData.nodes.find((n) => n.id === selectedNodeId) || null;
   }, [lineageData, selectedNodeId]);
 
+  const pipelineStatus: PipelineStatusResponse | null = useMemo(() => {
+    if (!pipelineSummary) return null;
+    return {
+      pipeline_id: pipelineSummary.pipeline_id || 'icestream',
+      state: pipelineSummary.state || 'RUNNING',
+      recovery_attempt: 0,
+      updated_at: lastUpdated || '',
+    };
+  }, [pipelineSummary, lastUpdated]);
+
   return (
-    <div className="flex flex-col h-full min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-6 lg:p-8 font-sans">
-      {/* Top Lineage Toolbar */}
-      <LineageToolbar
-        streamName="checkout-stream"
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-sky-500 selection:text-white">
+      {/* Top Header Navigation */}
+      <Header
+        pipelineStatus={pipelineStatus}
         lastUpdated={lastUpdated}
         isRefreshing={isRefreshing}
-        pipelineSummary={pipelineSummary}
         onRefresh={() => fetchLineage(true)}
+        activeView={activeView}
+        onSelectView={onSelectView}
       />
+
+      <div className="flex-1 flex flex-col h-full bg-slate-950 text-slate-100 p-4 sm:p-6 lg:p-8 font-sans">
+        {/* Top Lineage Toolbar */}
+        <LineageToolbar
+          streamName="checkout-stream"
+          lastUpdated={lastUpdated}
+          isRefreshing={isRefreshing}
+          pipelineSummary={pipelineSummary}
+          onRefresh={() => fetchLineage(true)}
+          onBack={() => onSelectView('dashboard')}
+        />
 
       {/* Main Viewport Content Area */}
       <div className="flex-1 flex flex-col relative">
@@ -112,7 +148,7 @@ export const LineagePage: React.FC = () => {
 
         {/* Live Lineage Graph Canvas */}
         {!isLoading && !error && lineageData && lineageData.nodes.length > 0 && (
-          <div className="flex-1 flex flex-col min-h-[650px] relative">
+          <div className="flex-1 flex flex-col h-[650px] relative">
             <LineageCanvas
               data={lineageData}
               selectedNodeId={selectedNodeId}
@@ -133,5 +169,6 @@ export const LineagePage: React.FC = () => {
         />
       </div>
     </div>
-  );
+  </div>
+);
 };

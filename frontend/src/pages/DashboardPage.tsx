@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { AlertCircle, RefreshCw, Layers } from 'lucide-react';
+import { AlertCircle, RefreshCw, Layers, ExternalLink } from 'lucide-react';
 import { Header } from '../components/dashboard/Header';
 import { KpiCards } from '../components/dashboard/KpiCards';
 import { ErrorRateTimeline } from '../components/dashboard/ErrorRateTimeline';
@@ -32,7 +32,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     errors,
     lastUpdated,
     refreshData,
-  } = useDashboardData(15000);
+  } = useDashboardData(1000);
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedIncident, setSelectedIncident] = useState<IncidentItem | null>(null);
@@ -77,11 +77,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               <Layers className="w-4 h-4 text-sky-400" />
               <h2 className="font-bold text-sm text-slate-100">Pipeline Data Lineage DAG</h2>
             </div>
-            {lineage?.nodes && (
-              <span className="text-[11px] font-mono text-slate-500">
-                {lineage.nodes.length} nodes • {lineage.edges.length} edges
-              </span>
-            )}
+            <div className="flex items-center gap-3">
+              {lineage?.nodes && (
+                <span className="text-[11px] font-mono text-slate-500">
+                  {lineage.nodes.length} nodes • {lineage.edges.length} edges
+                </span>
+              )}
+              <button
+                onClick={() => onSelectView('lineage')}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/20 text-xs font-medium transition-colors"
+                title="Open full lineage view"
+              >
+                <span>Full View</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
           {/* Lineage Loading State */}
@@ -115,7 +125,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
           {/* Live Lineage Graph Canvas */}
           {!isLoading && !errors.lineage && lineage && (
-            <div className="flex-1 flex flex-col min-h-[480px] relative">
+            <div className="flex-1 flex flex-col h-[600px] relative">
               <LineageCanvas
                 data={lineage}
                 selectedNodeId={selectedNodeId}

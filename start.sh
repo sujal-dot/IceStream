@@ -21,6 +21,7 @@ mkdir -p "${LOGS_DIR}"
 
 BACKEND_PID_FILE="${SCRIPT_DIR}/.backend.pid"
 FRONTEND_PID_FILE="${SCRIPT_DIR}/.frontend.pid"
+GENERATOR_PID_FILE="${SCRIPT_DIR}/.generator.pid"
 
 # Colors for terminal formatting
 GREEN='\033[0;32m'
@@ -126,6 +127,20 @@ stop_services() {
         echo -e "${GREEN}Cleaned${NC}"
     fi
 
+    # 3. Stop Event Generator Process
+    if [ -f "${GENERATOR_PID_FILE}" ]; then
+        local gpid
+        gpid=$(cat "${GENERATOR_PID_FILE}" 2>/dev/null || echo "")
+        if [ -n "${gpid}" ] && kill -0 "${gpid}" 2>/dev/null; then
+            echo -n "Stopping Event Generator (PID ${gpid})... "
+            kill "${gpid}" 2>/dev/null || true
+            sleep 1
+            echo -e "${GREEN}Stopped${NC}"
+        fi
+        rm -f "${GENERATOR_PID_FILE}"
+    fi
+    pkill -f "generator/main.py" 2>/dev/null || true
+
     # 3. Stop Docker Containers safely without removing volumes
     echo "Stopping Docker Compose infrastructure containers..."
     docker compose stop
@@ -174,6 +189,7 @@ show_status() {
     echo "Application:"
     check_service_status "FastAPI Backend" "curl -sf http://localhost:8000/health" "http://localhost:8000"
     check_service_status "React Frontend" "curl -sf http://localhost:5173" "http://localhost:5173"
+    check_service_status "Event Generator" "pgrep -f 'generator/main.py'" "background stream"
 
     echo ""
     echo "Pipeline Jobs:"
@@ -406,6 +422,31 @@ else
     wait_for_condition "React Frontend" "curl -sf http://localhost:5173" 30
 fi
 
+# Event Generator (Background Telemetry Stream)
+trap '' ERR
+set +e
+GENERATOR_RUNNING=0
+if [ -f "${GENERATOR_PID_FILE}" ]; then
+    GPID=$(cat "${GENERATOR_PID_FILE}" 2>/dev/null || echo "")
+    if [ -n "${GPID}" ] && kill -0 "${GPID}" 2>/dev/null; then
+        GENERATOR_RUNNING=1
+    fi
+fi
+if pgrep -f "generator/main.py" >/dev/null 2>&1; then
+    GENERATOR_RUNNING=1
+fi
+set -e
+trap 'trap_error ${LINENO}' ERR
+
+if [ ${GENERATOR_RUNNING} -eq 1 ]; then
+    echo -e "  Event Generator: ${GREEN}Already running in background${NC}"
+else
+    echo "  Starting Event Generator in background (rate: 50 events/sec, null rate: 5%)..."
+    PYTHONPATH="${SCRIPT_DIR}" nohup ${PYTHON_EXEC} -u generator/main.py --rate 50 --null-rate 5.0 > "${LOGS_DIR}/generator.log" 2>&1 &
+    echo $! > "${GENERATOR_PID_FILE}"
+    echo -e "  Event Generator: ${GREEN}Started in background (PID $(cat "${GENERATOR_PID_FILE}"))${NC}"
+fi
+
 echo -e "${GREEN}✓ Application services operational.${NC}\n"
 
 # [7/7] Final System Verification
@@ -441,6 +482,7 @@ echo -e "  Grafana          ${GREEN}✓${NC} (http://localhost:3000)"
 echo -e "\nApplication:"
 echo -e "  Backend API      ${GREEN}✓${NC} http://localhost:8000"
 echo -e "  React Dashboard  ${GREEN}✓${NC} http://localhost:5173"
+echo -e "  Event Generator  ${GREEN}✓${NC} Running in background (--rate 10)"
 echo -e "  Streaming Job    ${GREEN}✓${NC} RUNNING"
 
 echo -e "\nUseful Endpoints:"

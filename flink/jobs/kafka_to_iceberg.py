@@ -180,7 +180,8 @@ def get_active_flink_jobs(flink_url: str = "http://localhost:8081") -> List[Dict
     try:
         req = urllib.request.urlopen(f"{flink_url}/jobs/overview", timeout=5)
         data = json.loads(req.read().decode("utf-8"))
-        return data.get("jobs", [])
+        jobs = data.get("jobs", [])
+        return [j for j in jobs if j.get("state") == "RUNNING"]
     except Exception:
         return []
 

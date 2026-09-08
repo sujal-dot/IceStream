@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import logging
 import os
 import sqlite3
+import threading
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("icestream.storage.db")
@@ -39,6 +40,7 @@ class StorageBackend:
 
         if self.use_sqlite or "sqlite" in self.db_uri or not self.db_uri:
             self.use_sqlite = True
+            self._sqlite_lock = threading.Lock()
             # SQLite connection setup (check_same_thread=False for multithreaded test access)
             self._sqlite_conn = sqlite3.connect(":memory:", check_same_thread=False)
             self._sqlite_conn.row_factory = sqlite3.Row
@@ -501,65 +503,134 @@ class StorageBackend:
         act = incident.get("action_taken") or "Downstream pipeline paused."
 
         if self.use_sqlite:
-            conn = self._get_connection()
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                INSERT INTO pipeline_incidents (
-                    incident_id, pipeline_id, pipeline_name, created_at, detected_at, updated_at,
-                    trigger, trigger_type, error_rate, threshold, circuit_state,
-                    failed_event_count, failed_records, total_records, quarantine_count,
-                    status, severity, message, action_taken, slack_sent, slack_sent_at, slack_error,
-                    recovery_attempt, last_error, resolved_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(incident_id) DO UPDATE SET
-                    status=excluded.status,
-                    severity=excluded.severity,
-                    error_rate=excluded.error_rate,
-                    threshold=excluded.threshold,
-                    failed_event_count=excluded.failed_event_count,
-                    failed_records=excluded.failed_records,
-                    total_records=excluded.total_records,
-                    circuit_state=excluded.circuit_state,
-                    quarantine_count=excluded.quarantine_count,
-                    action_taken=excluded.action_taken,
-                    slack_sent=excluded.slack_sent,
-                    slack_sent_at=excluded.slack_sent_at,
-                    slack_error=excluded.slack_error,
-                    recovery_attempt=excluded.recovery_attempt,
-                    last_error=excluded.last_error,
-                    updated_at=excluded.updated_at,
-                    resolved_at=excluded.resolved_at;
-                """,
-                (
-                    incident["incident_id"],
-                    p_id,
-                    p_name,
-                    created_str,
-                    detected_str,
-                    updated_str,
-                    trig,
-                    trig,
-                    err_rate,
-                    thresh,
-                    incident.get("circuit_state", "OPEN"),
-                    failed_c,
-                    failed_c,
-                    total_c,
-                    int(incident.get("quarantine_count", 0)),
-                    incident.get("status", "OPEN"),
-                    sev,
-                    incident.get("message"),
-                    act,
-                    1 if incident.get("slack_sent") else 0,
-                    slack_sent_str,
-                    incident.get("slack_error"),
-                    int(incident.get("recovery_attempt", 0)),
-                    incident.get("last_error"),
-                    resolved_str,
-                ),
-            )
-            conn.commit()
+            lock = getattr(self, "_sqlite_lock", None)
+            if lock:
+                with lock:
+                    conn = self._get_connection()
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        """
+                        INSERT INTO pipeline_incidents (
+                            incident_id, pipeline_id, pipeline_name, created_at, detected_at, updated_at,
+                            trigger, trigger_type, error_rate, threshold, circuit_state,
+                            failed_event_count, failed_records, total_records, quarantine_count,
+                            status, severity, message, action_taken, slack_sent, slack_sent_at, slack_error,
+                            recovery_attempt, last_error, resolved_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(incident_id) DO UPDATE SET
+                            status=excluded.status,
+                            severity=excluded.severity,
+                            error_rate=excluded.error_rate,
+                            threshold=excluded.threshold,
+                            failed_event_count=excluded.failed_event_count,
+                            failed_records=excluded.failed_records,
+                            total_records=excluded.total_records,
+                            circuit_state=excluded.circuit_state,
+                            quarantine_count=excluded.quarantine_count,
+                            action_taken=excluded.action_taken,
+                            slack_sent=excluded.slack_sent,
+                            slack_sent_at=excluded.slack_sent_at,
+                            slack_error=excluded.slack_error,
+                            recovery_attempt=excluded.recovery_attempt,
+                            last_error=excluded.last_error,
+                            updated_at=excluded.updated_at,
+                            resolved_at=excluded.resolved_at;
+                        """,
+                        (
+                            incident["incident_id"],
+                            p_id,
+                            p_name,
+                            created_str,
+                            detected_str,
+                            updated_str,
+                            trig,
+                            trig,
+                            err_rate,
+                            thresh,
+                            incident.get("circuit_state", "OPEN"),
+                            failed_c,
+                            failed_c,
+                            total_c,
+                            int(incident.get("quarantine_count", 0)),
+                            incident.get("status", "OPEN"),
+                            sev,
+                            incident.get("message"),
+                            act,
+                            1 if incident.get("slack_sent") else 0,
+                            slack_sent_str,
+                            incident.get("slack_error"),
+                            int(incident.get("recovery_attempt", 0)),
+                            incident.get("last_error"),
+                            resolved_str,
+                        ),
+                    )
+                    try:
+                        conn.commit()
+                    except Exception:
+                        pass
+            else:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    INSERT INTO pipeline_incidents (
+                        incident_id, pipeline_id, pipeline_name, created_at, detected_at, updated_at,
+                        trigger, trigger_type, error_rate, threshold, circuit_state,
+                        failed_event_count, failed_records, total_records, quarantine_count,
+                        status, severity, message, action_taken, slack_sent, slack_sent_at, slack_error,
+                        recovery_attempt, last_error, resolved_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(incident_id) DO UPDATE SET
+                        status=excluded.status,
+                        severity=excluded.severity,
+                        error_rate=excluded.error_rate,
+                        threshold=excluded.threshold,
+                        failed_event_count=excluded.failed_event_count,
+                        failed_records=excluded.failed_records,
+                        total_records=excluded.total_records,
+                        circuit_state=excluded.circuit_state,
+                        quarantine_count=excluded.quarantine_count,
+                        action_taken=excluded.action_taken,
+                        slack_sent=excluded.slack_sent,
+                        slack_sent_at=excluded.slack_sent_at,
+                        slack_error=excluded.slack_error,
+                        recovery_attempt=excluded.recovery_attempt,
+                        last_error=excluded.last_error,
+                        updated_at=excluded.updated_at,
+                        resolved_at=excluded.resolved_at;
+                    """,
+                    (
+                        incident["incident_id"],
+                        p_id,
+                        p_name,
+                        created_str,
+                        detected_str,
+                        updated_str,
+                        trig,
+                        trig,
+                        err_rate,
+                        thresh,
+                        incident.get("circuit_state", "OPEN"),
+                        failed_c,
+                        failed_c,
+                        total_c,
+                        int(incident.get("quarantine_count", 0)),
+                        incident.get("status", "OPEN"),
+                        sev,
+                        incident.get("message"),
+                        act,
+                        1 if incident.get("slack_sent") else 0,
+                        slack_sent_str,
+                        incident.get("slack_error"),
+                        int(incident.get("recovery_attempt", 0)),
+                        incident.get("last_error"),
+                        resolved_str,
+                    ),
+                )
+                try:
+                    conn.commit()
+                except Exception:
+                    pass
         else:
             conn = self._get_connection()
             with conn.cursor() as cursor:

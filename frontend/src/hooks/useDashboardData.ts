@@ -31,7 +31,7 @@ export interface UseDashboardDataReturn {
   refreshData: (manual?: boolean) => Promise<void>;
 }
 
-export const useDashboardData = (pollIntervalMs: number = 15000): UseDashboardDataReturn => {
+export const useDashboardData = (pollIntervalMs: number = 1000): UseDashboardDataReturn => {
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
   const [pipelineStatus, setPipelineStatus] = useState<PipelineStatusResponse | null>(null);
   const [lineage, setLineage] = useState<ApiLineageResponse | null>(null);

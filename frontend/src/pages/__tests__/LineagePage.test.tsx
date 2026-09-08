@@ -144,4 +144,25 @@ describe('LineagePage Component', () => {
       expect(screen.getByText('Kafka')).toBeInTheDocument();
     });
   });
+
+  it('triggers onSelectView("dashboard") when Back button or Dashboard tab is clicked', async () => {
+    vi.mocked(LineageApiService.getLineage).mockResolvedValue(mockLineageData);
+    const onSelectViewMock = vi.fn();
+
+    render(<LineagePage activeView="lineage" onSelectView={onSelectViewMock} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Back to Dashboard')).toBeInTheDocument();
+    });
+
+    const backButton = screen.getByText('Back to Dashboard');
+    fireEvent.click(backButton);
+
+    expect(onSelectViewMock).toHaveBeenCalledWith('dashboard');
+
+    const dashboardNavTab = screen.getByRole('button', { name: /^Dashboard$/i });
+    fireEvent.click(dashboardNavTab);
+
+    expect(onSelectViewMock).toHaveBeenCalledWith('dashboard');
+  });
 });

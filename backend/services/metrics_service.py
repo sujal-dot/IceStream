@@ -66,7 +66,11 @@ class MetricsService:
         rem_model = RemediationMetricsModel()
         pipe_state = None
         if self.state_manager:
-            pipe_state = self.state_manager.get_state()
+            raw_state = self.state_manager.get_state()
+            if isinstance(raw_state, dict):
+                pipe_state = dict(raw_state)
+                if "kafka_lag" not in pipe_state:
+                    pipe_state["kafka_lag"] = getattr(self.state_manager, "kafka_lag", 0)
 
         return MetricsResponse(
             timestamp=now_iso,

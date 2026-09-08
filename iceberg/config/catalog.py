@@ -20,10 +20,10 @@ def get_catalog_config(is_internal: bool = False) -> Dict[str, Any]:
         "MINIO_ENDPOINT_INTERNAL" if is_internal else "MINIO_ENDPOINT",
         "http://minio:9000" if is_internal else "http://localhost:9000"
     )
-    access_key = os.getenv("MINIO_ROOT_USER") or os.getenv("MINIO_ACCESS_KEY")
-    secret_key = os.getenv("MINIO_ROOT_PASSWORD") or os.getenv("MINIO_SECRET_KEY")
-    if not access_key or not secret_key:
-        raise ValueError("MINIO_ROOT_USER / MINIO_ACCESS_KEY and MINIO_ROOT_PASSWORD / MINIO_SECRET_KEY environment variables are required.")
+    access_key = os.getenv("MINIO_ROOT_USER") or os.getenv("MINIO_ACCESS_KEY") or os.getenv("AWS_ACCESS_KEY_ID") or "icestream_minio"
+    secret_key = os.getenv("MINIO_ROOT_PASSWORD") or os.getenv("MINIO_SECRET_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY") or "change-me-minio-secret"
+    os.environ["AWS_ACCESS_KEY_ID"] = access_key
+    os.environ["AWS_SECRET_ACCESS_KEY"] = secret_key
     region = os.getenv("MINIO_REGION", "us-east-1")
     warehouse = os.getenv("ICEBERG_WAREHOUSE", "s3://warehouse/")
 

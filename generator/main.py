@@ -1,10 +1,18 @@
 """Main CLI entrypoint for the IceStream High-Throughput E-Commerce Event Generator."""
 
 import logging
+import os
 import signal
 import sys
 import time
 from typing import Optional
+
+# Ensure project root directory is on sys.path and takes precedence over script directory
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if sys.path and os.path.abspath(sys.path[0]) == os.path.abspath(os.path.dirname(__file__)):
+    sys.path.pop(0)
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 from generator.config import GeneratorConfig, parse_args
 from generator.event_generator import EventGeneratorEngine

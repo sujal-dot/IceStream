@@ -19,6 +19,17 @@ def verify_api_token(
 ) -> str:
     """Verify Bearer token for protected pipeline control endpoints using constant-time comparison."""
     expected_token = os.getenv("ICESTREAM_API_TOKEN")
+    if not expected_token and os.path.exists(".env"):
+        try:
+            with open(".env", "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("ICESTREAM_API_TOKEN="):
+                        expected_token = line.split("=", 1)[1].strip("\"'")
+                        break
+        except Exception:
+            pass
+
     if not expected_token:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -151,7 +151,7 @@ export const LineageCanvas: React.FC<LineageCanvasProps> = ({
   }, [onSelectNode]);
 
   return (
-    <div className="w-full h-full min-h-[650px] relative bg-slate-950 rounded-xl overflow-hidden border border-slate-800/80 shadow-2xl">
+    <div className="w-full h-[600px] relative bg-slate-950 rounded-xl overflow-hidden border border-slate-800/80 shadow-2xl">
       <ReactFlow
         nodes={nodes}
         edges={edges}
