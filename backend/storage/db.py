@@ -41,10 +41,10 @@ class StorageBackend:
         if self.use_sqlite or "sqlite" in self.db_uri or not self.db_uri:
             self.use_sqlite = True
             self._sqlite_lock = threading.Lock()
-            # SQLite connection setup (check_same_thread=False for multithreaded test access)
-            self._sqlite_conn = sqlite3.connect(":memory:", check_same_thread=False)
+            db_path = ":memory:" if os.getenv("TESTING", "").lower() in ("true", "1") else os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "icestream_dev.db"))
+            self._sqlite_conn = sqlite3.connect(db_path, check_same_thread=False)
             self._sqlite_conn.row_factory = sqlite3.Row
-            logger.info("StorageBackend initialized with SQLite in-memory database")
+            logger.info(f"StorageBackend initialized with SQLite database at '{db_path}'")
         else:
             logger.info(f"StorageBackend initialized with PostgreSQL at {self.db_uri.split('@')[-1] if '@' in self.db_uri else 'configured target'}")
 
@@ -191,7 +191,8 @@ class StorageBackend:
             except Exception as e:
                 logger.warning(f"Could not initialize PostgreSQL tables: {e}. Falling back to SQLite.")
                 self.use_sqlite = True
-                self._sqlite_conn = sqlite3.connect(":memory:", check_same_thread=False)
+                db_path = ":memory:" if os.getenv("TESTING", "").lower() in ("true", "1") else os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "icestream_dev.db"))
+                self._sqlite_conn = sqlite3.connect(db_path, check_same_thread=False)
                 self._sqlite_conn.row_factory = sqlite3.Row
                 self._init_tables()
 

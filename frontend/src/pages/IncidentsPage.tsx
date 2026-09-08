@@ -89,6 +89,20 @@ export const IncidentsPage: React.FC<IncidentsPageProps> = ({
     };
   }, [incidents]);
 
+  const [isTriggering, setIsTriggering] = useState<boolean>(false);
+
+  const handleTriggerTestIncident = async () => {
+    setIsTriggering(true);
+    try {
+      await IncidentsApiService.triggerTestIncident('NULL_FIELD_SPIKE');
+      await fetchIncidents(true);
+    } catch (err) {
+      console.error('Failed to trigger test incident:', err);
+    } finally {
+      setIsTriggering(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-sky-500 selection:text-white">
       {/* Header Bar */}
@@ -118,14 +132,24 @@ export const IncidentsPage: React.FC<IncidentsPageProps> = ({
                 </p>
               </div>
             </div>
-            <button
-              onClick={() => fetchIncidents(true)}
-              disabled={isRefreshing}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-sky-400' : ''}`} />
-              <span>Refresh Incidents</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleTriggerTestIncident}
+                disabled={isTriggering}
+                className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white text-xs font-semibold shadow-md transition-all disabled:opacity-50"
+              >
+                <AlertTriangle className="w-3.5 h-3.5" />
+                <span>{isTriggering ? 'Simulating...' : '+ Simulate Test Incident'}</span>
+              </button>
+              <button
+                onClick={() => fetchIncidents(true)}
+                disabled={isRefreshing}
+                className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-sky-400' : ''}`} />
+                <span>Refresh</span>
+              </button>
+            </div>
           </div>
 
           {/* Quick Stats Grid */}

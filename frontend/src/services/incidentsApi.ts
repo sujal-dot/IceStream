@@ -101,4 +101,31 @@ export class IncidentsApiService {
 
     return response.json();
   }
+
+  /**
+   * Trigger / generate a test incident in active backend server.
+   */
+  static async triggerTestIncident(triggerName: string = 'NULL_FIELD_SPIKE'): Promise<any> {
+    const response = await fetch(`${BASE_URL}/incidents/trigger`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        trigger: triggerName,
+        error_rate: 0.045,
+        failed_event_count: 45,
+        quarantine_count: 45,
+      }),
+    });
+
+    if (!response.ok) {
+      const errBody = await response.json().catch(() => ({}));
+      const msg = errBody.detail || `Failed to trigger test incident: ${response.status} ${response.statusText}`;
+      throw new Error(msg);
+    }
+
+    return response.json();
+  }
 }

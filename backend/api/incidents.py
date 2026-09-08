@@ -3,6 +3,8 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, status
 
+from pydantic import BaseModel, Field
+
 from backend.models.incidents import (
     IncidentActionResponse,
     IncidentDetailResponse,
@@ -14,8 +16,35 @@ from backend.security import verify_api_token
 router = APIRouter(prefix="/incidents", tags=["Incidents"])
 
 
+class TriggerIncidentRequest(BaseModel):
+    trigger: str = Field(default="NULL_FIELD_SPIKE", description="Incident trigger type")
+    error_rate: float = Field(default=0.045, description="Error rate percentage")
+    failed_event_count: int = Field(default=45, description="Failed record count")
+    quarantine_count: int = Field(default=45, description="Quarantine count")
+
+
 def get_incident_service() -> IncidentService:
     return IncidentService()
+
+
+@router.post(
+    "/trigger",
+    summary="Trigger Test Incident",
+    description="Simulate or generate a new incident record in backend storage.",
+)
+def trigger_incident(
+    payload: Optional[TriggerIncidentRequest] = None,
+):
+    from backend.app import get_remediation_controller
+    controller = get_remediation_controller()
+    req = payload or TriggerIncidentRequest()
+    inc = controller.get_or_create_incident(
+        trigger=req.trigger,
+        error_rate=req.error_rate,
+        failed_event_count=req.failed_event_count,
+        quarantine_count=req.quarantine_count,
+    )
+    return {"status": "SUCCESS", "incident": inc}
 
 
 @router.get(
