@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   ShieldAlert,
@@ -7,7 +7,6 @@ import {
   Clock,
   Activity,
   Layers,
-  AlertTriangle,
   RotateCw,
 } from 'lucide-react';
 import { IncidentItem } from '../../types/dashboard';
@@ -28,13 +27,22 @@ export const IncidentDetailModal: React.FC<IncidentDetailModalProps> = ({
   const [isResolving, setIsResolving] = useState<boolean>(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [localStatus, setLocalStatus] = useState<'OPEN' | 'ACKNOWLEDGED' | 'RESOLVED' | null>(null);
+
+  // Reset feedback state whenever a new incident is opened
+  useEffect(() => {
+    setLocalStatus(null);
+    setActionError(null);
+    setActionSuccess(null);
+  }, [incident?.incident_id]);
 
   if (!incident) return null;
 
+  const currentStatus = localStatus || incident.status;
   const isCritical = incident.severity === 'CRITICAL';
-  const isOpen = incident.status === 'OPEN';
-  const isAcknowledged = incident.status === 'ACKNOWLEDGED';
-  const isResolved = incident.status === 'RESOLVED';
+  const isOpen = currentStatus === 'OPEN';
+  const isAcknowledged = currentStatus === 'ACKNOWLEDGED';
+  const isResolved = currentStatus === 'RESOLVED';
 
   const handleAcknowledge = async () => {
     setIsAcknowledging(true);
@@ -43,8 +51,12 @@ export const IncidentDetailModal: React.FC<IncidentDetailModalProps> = ({
 
     try {
       await IncidentsApiService.acknowledgeIncident(incident.incident_id);
-      setActionSuccess(`Incident ${incident.incident_id} acknowledged.`);
+      setLocalStatus('ACKNOWLEDGED');
+      setActionSuccess(`Incident ${incident.incident_id} acknowledged successfully.`);
       onIncidentUpdated();
+      setTimeout(() => {
+        onClose();
+      }, 1000);
     } catch (err: any) {
       setActionError(err.message || 'Failed to acknowledge incident.');
     } finally {
@@ -59,8 +71,12 @@ export const IncidentDetailModal: React.FC<IncidentDetailModalProps> = ({
 
     try {
       await IncidentsApiService.resolveIncident(incident.incident_id);
+      setLocalStatus('RESOLVED');
       setActionSuccess(`Incident ${incident.incident_id} successfully resolved.`);
       onIncidentUpdated();
+      setTimeout(() => {
+        onClose();
+      }, 1000);
     } catch (err: any) {
       // Gracefully show backend rejection message (e.g. circuit still OPEN)
       setActionError(err.message || 'Unable to resolve incident.');
@@ -228,11 +244,11 @@ export const IncidentDetailModal: React.FC<IncidentDetailModalProps> = ({
           </button>
 
           <div className="flex items-center gap-2">
-            {/* Acknowledge Button */}
-            {isOpen && (
+            {/* Acknowledge Button - Only shown when status is OPEN */}
+            {isOpen && !isAcknowledged && !isResolved && (
               <button
                 onClick={handleAcknowledge}
-                disabled={isAcknowledging}
+                disabled={isAcknowledging || isResolving || !!actionSuccess}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-md transition-all disabled:opacity-50"
               >
                 {isAcknowledging ? (
@@ -244,11 +260,11 @@ export const IncidentDetailModal: React.FC<IncidentDetailModalProps> = ({
               </button>
             )}
 
-            {/* Resolve Button */}
+            {/* Resolve Button - Only shown when NOT resolved */}
             {!isResolved && (
               <button
                 onClick={handleResolve}
-                disabled={isResolving}
+                disabled={isAcknowledging || isResolving || !!actionSuccess}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md transition-all disabled:opacity-50"
               >
                 {isResolving ? (
