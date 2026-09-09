@@ -157,7 +157,7 @@ class QuarantineRouter:
             )
 
         # 8. Persist to Iceberg table
-        write_success = self._writer.write_record(record)
+        write_success = self._writer.write_record(record, immediate=True)
 
         if write_success:
             self._seen_quarantine_ids.add(quarantine_id)

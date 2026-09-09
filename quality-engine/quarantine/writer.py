@@ -1,9 +1,14 @@
 """
 IceStream Quarantine Writer
 Handles durable persistence of quarantine records to Apache Iceberg via PyArrow & REST Catalog.
+Includes bounded in-memory batching (50 records or 5s flush interval), thread safety,
+failure preservation, and shutdown flush guarantees.
 """
 import json
 import logging
+import os
+import threading
+import time
 from typing import List, Optional, Tuple
 import pyarrow as pa
 
@@ -37,9 +42,24 @@ class QuarantineWriter:
         self,
         catalog: Optional[Catalog] = None,
         metrics_collector: Optional[MetricsCollector] = None,
+        batch_size: Optional[int] = None,
+        flush_interval_seconds: Optional[float] = None,
     ) -> None:
         self._catalog = catalog
         self._metrics = metrics_collector or InMemoryMetricsCollector()
+
+        env_batch_size = int(os.getenv("QUARANTINE_BATCH_SIZE", "50"))
+        env_flush_interval = float(os.getenv("QUARANTINE_FLUSH_INTERVAL_SECONDS", "5.0"))
+
+        self.batch_size = batch_size if batch_size is not None else env_batch_size
+        self.flush_interval_seconds = (
+            flush_interval_seconds if flush_interval_seconds is not None else env_flush_interval
+        )
+
+        self._buffer: List[QuarantineRecord] = []
+        self._lock = threading.Lock()
+        self._last_flush_time = time.time()
+        self._append_count = 0
 
     @property
     def catalog(self) -> Catalog:
@@ -47,6 +67,18 @@ class QuarantineWriter:
         if self._catalog is None:
             self._catalog = get_catalog()
         return self._catalog
+
+    @property
+    def buffer_size(self) -> int:
+        """Return current buffered record count."""
+        with self._lock:
+            return len(self._buffer)
+
+    @property
+    def append_count(self) -> int:
+        """Return count of atomic Iceberg batch append operations executed."""
+        with self._lock:
+            return self._append_count
 
     def ensure_table_exists(self) -> None:
         """Verify that 'quarantine' namespace and 'quarantine.invalid_checkout_events' table exist."""
@@ -63,13 +95,51 @@ class QuarantineWriter:
             )
             logger.info("Created Iceberg table '%s'", QUARANTINE_TABLE_NAME)
 
-    def write_record(self, record: QuarantineRecord) -> bool:
-        """Persist a single quarantine record to Iceberg."""
-        written_count, success = self.write_batch([record])
-        return success and (written_count == 1)
+    def write_record(self, record: QuarantineRecord, immediate: bool = False) -> bool:
+        """Buffer a quarantine record, flushing if batch size, time interval, or immediate flag is triggered."""
+        with self._lock:
+            self._buffer.append(record)
+            should_flush = (
+                immediate
+                or len(self._buffer) >= self.batch_size
+                or (time.time() - self._last_flush_time) >= self.flush_interval_seconds
+            )
+
+        if should_flush:
+            cnt, success = self.flush()
+            return success
+        return True
+
+    def flush(self) -> Tuple[int, bool]:
+        """Flush buffered quarantine records to Iceberg.
+        
+        Preserves buffer if write fails (failure safety).
+        """
+        with self._lock:
+            if not self._buffer:
+                return (0, True)
+            records_to_flush = list(self._buffer)
+
+        count, success = self.write_batch(records_to_flush)
+
+        with self._lock:
+            if success:
+                # Remove successfully written records from buffer
+                self._buffer = self._buffer[len(records_to_flush):]
+                self._last_flush_time = time.time()
+                self._metrics.increment_counter("quarantine_batches_written")
+                self._metrics.increment_counter("quarantine_records_written", amount=count)
+                return (count, True)
+            else:
+                self._metrics.increment_counter("quarantine_write_failures")
+                logger.error(
+                    "[QuarantineWriter] Flush failed for %d records. Retaining in buffer.",
+                    len(records_to_flush),
+                )
+                return (0, False)
 
     def write_invalid_event(
-        self, event: dict, quality_result: dict, error_code: str = "INVALID_EVENT"
+        self, event: dict, quality_result: dict, error_code: str = "INVALID_EVENT", immediate: bool = True
     ) -> dict:
         """Convenience method to construct QuarantineRecord and write to Iceberg/quarantine."""
         import uuid
@@ -95,13 +165,13 @@ class QuarantineWriter:
             schema_version=str(event.get("schema_version", "v1.0")),
         )
 
-        cnt, success = self.write_batch([rec])
+        success = self.write_record(rec, immediate=immediate)
         return {
             "status": "SUCCESS" if success else "FAILED",
             "quarantine_id": q_id,
             "event_id": evt_id,
             "error_code": error_code,
-            "records_written": cnt,
+            "records_written": 1 if success else 0,
         }
 
     def write_batch(self, records: List[QuarantineRecord]) -> Tuple[int, bool]:
@@ -143,10 +213,22 @@ class QuarantineWriter:
         try:
             arrow_table = pa.Table.from_pydict(pydict, schema=PYARROW_QUARANTINE_SCHEMA)
             tbl.append(arrow_table)
+            with self._lock:
+                self._append_count += 1
             self._metrics.increment_counter("quarantine_write_success_total", amount=len(records))
-            logger.info("Successfully appended %d record(s) to '%s'", len(records), QUARANTINE_TABLE_NAME)
+            logger.info("Successfully appended %d record(s) to '%s' (append #%d)", len(records), QUARANTINE_TABLE_NAME, self._append_count)
             return (len(records), True)
         except Exception as e:
             logger.error("Failed to append records to Iceberg quarantine table '%s': %s", QUARANTINE_TABLE_NAME, e)
             self._metrics.increment_counter("quarantine_write_failure_total", amount=len(records))
             return (0, False)
+
+    def close(self) -> Tuple[int, bool]:
+        """Flush remaining buffered records on shutdown."""
+        return self.flush()
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass

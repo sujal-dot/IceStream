@@ -31,6 +31,7 @@ from remediation.state_manager import PipelineState, PipelineStateManager
 from remediation.alert_service import AlertService, MockAlertService, SlackAlertAdapter
 from remediation.source_adapter import LocalSourceAdapter, SourceAdapter
 from remediation.reprocessor import ReprocessResult, Reprocessor
+from remediation.flink_controller import FlinkController
 from remediation.metrics import (
     REMEDIATION_ATTEMPTS_TOTAL,
     REMEDIATION_DURATION_SECONDS,
@@ -82,6 +83,7 @@ class RemediationController:
         reprocessor: Optional[Reprocessor] = None,
         quarantine_writer: Optional[QuarantineWriter] = None,
         storage: Optional[StorageBackend] = None,
+        flink_controller: Optional[FlinkController] = None,
         max_recovery_attempts: int = 3,
     ):
         self.pipeline_id = pipeline_id
@@ -96,6 +98,7 @@ class RemediationController:
             quarantine_writer=quarantine_writer
         )
         self.quarantine_writer = quarantine_writer
+        self.flink_controller = flink_controller or FlinkController()
         self.max_recovery_attempts = max_recovery_attempts
 
         self._lock = threading.Lock()
@@ -242,6 +245,10 @@ class RemediationController:
             )
             record_state_metric(self.pipeline_id, "REMEDIATING")
 
+            # Pause running Flink job during remediation
+            flink_pause_res = self.flink_controller.pause_job()
+            logger.info("[RemediationController] Flink pause result: %s", flink_pause_res)
+
             # 2. Stage: QUARANTINE_VERIFIED (Step 12)
             if not self.verify_quarantine(incident, ctx):
                 err = "Quarantine verification failed. Invalid records not persisted."
@@ -378,6 +385,10 @@ class RemediationController:
                     recovery_attempt=attempt_num,
                 )
                 record_state_metric(self.pipeline_id, "RUNNING")
+
+                # Resume Flink job after successful recovery
+                flink_resume_res = self.flink_controller.resume_job()
+                logger.info("[RemediationController] Flink resume result: %s", flink_resume_res)
 
                 # Update incident record to RECOVERED
                 resolved_ts = datetime.now(timezone.utc)

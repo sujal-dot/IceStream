@@ -64,6 +64,9 @@ class PipelineService:
                 updated_at=datetime.now(timezone.utc).isoformat(),
             )
 
+        if self.remediation_controller and hasattr(self.remediation_controller, "flink_controller") and self.remediation_controller.flink_controller:
+            self.remediation_controller.flink_controller.pause_job()
+
         new_st = self.state_manager.transition_to(
             to_state="PAUSED",
             reason=reason or "Manual pause initiated via API",
@@ -108,6 +111,9 @@ class PipelineService:
                 message="Pipeline is already running.",
                 updated_at=datetime.now(timezone.utc).isoformat(),
             )
+
+        if self.remediation_controller and hasattr(self.remediation_controller, "flink_controller") and self.remediation_controller.flink_controller:
+            self.remediation_controller.flink_controller.resume_job()
 
         new_st = self.state_manager.transition_to(
             to_state="RUNNING",
