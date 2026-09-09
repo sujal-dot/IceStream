@@ -13,8 +13,8 @@ CREATE CATALOG icestream WITH (
   's3.path-style-access'='true',
   's3.region'='us-east-1',
   'client.region'='us-east-1',
-  's3.access-key-id'='icestream_minio',
-  's3.secret-access-key'='change-me-minio-secret'
+  's3.access-key-id'='${MINIO_ROOT_USER}',
+  's3.secret-access-key'='${MINIO_ROOT_PASSWORD}'
 );
 
 USE CATALOG icestream;

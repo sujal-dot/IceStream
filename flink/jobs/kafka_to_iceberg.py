@@ -71,6 +71,8 @@ class FlinkBronzePipeline:
 
     def generate_sql_statement(self) -> str:
         """Generate the complete Flink SQL execution script for the pipeline."""
+        access_key = os.getenv("MINIO_ROOT_USER") or os.getenv("MINIO_ACCESS_KEY") or "icestream_minio"
+        secret_key = os.getenv("MINIO_ROOT_PASSWORD") or os.getenv("MINIO_SECRET_KEY") or "icestream_minio_secret"
         sql = f"""-- IceStream Bronze Pipeline Job SQL
 CREATE CATALOG {self.iceberg_config.catalog_name} WITH (
   'type'='iceberg',
@@ -82,8 +84,8 @@ CREATE CATALOG {self.iceberg_config.catalog_name} WITH (
   's3.path-style-access'='true',
   's3.region'='us-east-1',
   'client.region'='us-east-1',
-  's3.access-key-id'='icestream_minio',
-  's3.secret-access-key'='icestream_minio_secret'
+  's3.access-key-id'='{access_key}',
+  's3.secret-access-key'='{secret_key}'
 );
 
 USE CATALOG {self.iceberg_config.catalog_name};

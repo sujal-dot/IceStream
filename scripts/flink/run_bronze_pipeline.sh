@@ -58,7 +58,14 @@ if [ -z "${ACTIVE_JOB_ID}" ]; then
     echo "Submitting Flink job..."
     
     # Submit SQL streaming job to Flink
-    docker exec -i icestream-flink-jobmanager /opt/flink/bin/sql-client.sh < "${PROJECT_ROOT}/flink/jobs/kafka_to_iceberg.sql" >/dev/null 2>&1 || true
+    python3 -c "
+import os, sys
+with open('${PROJECT_ROOT}/flink/jobs/kafka_to_iceberg.sql') as f:
+    sql = f.read()
+u = os.getenv('MINIO_ROOT_USER') or os.getenv('MINIO_ACCESS_KEY') or 'icestream_minio'
+p = os.getenv('MINIO_ROOT_PASSWORD') or os.getenv('MINIO_SECRET_KEY') or 'icestream_minio_secret'
+sys.stdout.write(sql.replace('\${MINIO_ROOT_USER}', u).replace('\${MINIO_ROOT_PASSWORD}', p))
+" | docker exec -i icestream-flink-jobmanager /opt/flink/bin/sql-client.sh >/dev/null 2>&1 || true
 
     # Wait for job submission to register
     sleep 3
