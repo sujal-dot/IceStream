@@ -19,7 +19,8 @@ os.environ.setdefault("MINIO_ACCESS_KEY", "icestream_minio")
 os.environ.setdefault("MINIO_SECRET_KEY", "change-me-minio-secret")
 os.environ.setdefault("MINIO_ENDPOINT", "http://localhost:9000")
 
-os.environ.setdefault("ICESTREAM_API_TOKEN", "test_api_token_secret_12345")
+os.environ["ICESTREAM_API_TOKEN"] = "test_api_token_secret_12345"
+os.environ["TESTING"] = "true"
 
 
 @pytest.fixture(autouse=True)
