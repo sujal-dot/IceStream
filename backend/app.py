@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from backend.security import verify_api_token
+from backend.middleware.rate_limiter import RateLimiterMiddleware
 
 # Ensure quality-engine directory is on sys.path for metrics & remediation imports
 QUALITY_ENGINE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "quality-engine"))
@@ -25,7 +26,7 @@ from metrics.error_rate import ErrorRateConfig, ErrorRateEngine, HealthStatus
 from circuit_breaker import CircuitBreaker, CircuitBreakerConfig, CircuitState
 from remediation.state_manager import PipelineStateManager, PipelineState
 from remediation.controller import RemediationController
-from storage.db import StorageBackend, get_db_storage
+from backend.storage.db import StorageBackend, get_db_storage
 
 # Import API Routers
 from backend.api import incidents, metrics, pipeline, lineage, quality, schema, events
@@ -204,7 +205,6 @@ def create_app(
             {"name": "Events", "description": "Sanitized Event Metadata Inspection"},
         ],
     )
-
     # CORS Configuration
     origins_str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173")
     origins = [o.strip() for o in origins_str.split(",") if o.strip()]
@@ -212,9 +212,22 @@ def create_app(
         CORSMiddleware,
         allow_origins=origins,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "OPTIONS", "DELETE", "PUT"],
+        allow_headers=["Authorization", "Content-Type", "Accept"],
     )
+
+    # Rate Limiting Middleware
+    app.add_middleware(RateLimiterMiddleware)
+
+    # HTTP Defense-in-Depth Security Headers Middleware
+    @app.middleware("http")
+    async def add_security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
 
     # Register Routers
     app.include_router(pipeline.router)

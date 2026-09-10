@@ -4,10 +4,16 @@
 
 export type PipelineHealthState =
   | 'HEALTHY'
-  | 'DEGRADED'
-  | 'CIRCUIT_OPEN'
+  | 'RUNNING'
   | 'PAUSED'
+  | 'DEGRADED'
+  | 'QUARANTINING'
+  | 'CIRCUIT_OPEN'
   | 'REMEDIATING'
+  | 'REFETCHING'
+  | 'REPROCESSING'
+  | 'VALIDATING'
+  | 'RESUMING'
   | 'RECOVERED'
   | 'RECOVERY_FAILED'
   | 'UNKNOWN';

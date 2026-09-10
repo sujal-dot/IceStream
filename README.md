@@ -1,6 +1,6 @@
 # IceStream — Real-Time Lakehouse Observability & Self-Healing Data Pipeline
 
-[![Project Status: Phase 1 Architecture](https://img.shields.io/badge/Project_Status-Phase_1:_Architecture_%26_Environment-blue.svg)](#project-status)
+[![Project Status: Phase 7 Complete](https://img.shields.io/badge/Project_Status-Phase_7:_Complete_Observability_%26_Self--Healing_Pipeline-success.svg)](#project-status)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ## Quick Start
@@ -67,7 +67,7 @@ By combining stream processing with lakehouse table formats, real-time circuit b
 
 ## 2. Project Status
 
-> **CURRENT STATUS**: **Phase 5 — Self-Healing Pipeline**
+> **CURRENT STATUS**: **Phase 7 — Complete Observability & Self-Healing Pipeline**
 
 - **Phase 1 — Architecture & Environment**
   - **Day 1 — Architecture** ✓
@@ -101,6 +101,7 @@ By combining stream processing with lakehouse table formats, real-time circuit b
 - **Phase 7 — REACT FLOW UI**
   - **Day 25 — React Flow Lineage Dashboard** ✓
   - **Day 26 — Final Observability Dashboard + Incident Experience** ✓
+  - **UI Status Mapping Fix**: Full frontend mapping for all 12 backend pipeline states (`VALIDATING`, `REPROCESSING`, `REFETCHING`, `QUARANTINING`, `RESUMING`) ✓
 
 - **Implemented on Day 1**: Project architecture specifications, repository directory layout, component documentation, failure resilience matrices, recovery workflow specifications, configuration placeholders, and system diagrams.
 - **Implemented on Day 2**: Local Docker Compose infrastructure orchestrating Kafka (KRaft), MinIO, PostgreSQL, Flink (JobManager & TaskManager), Prometheus, and Grafana with native container health checks.
@@ -143,7 +144,7 @@ IceStream can generate high-volume realistic e-commerce checkout events, publish
 
 ---
 
-*Note: Downstream processing component references in this document reflect planned architecture targets.*
+*Note: All architecture target components are fully implemented and verified.*
 
 
 ---
@@ -258,28 +259,28 @@ Detailed technical specifications are documented in [`docs/architecture.md`](doc
 
 ---
 
-## 6. Technology Stack (Planned)
+## 6. Technology Stack
 
-The planned technology stack and intended responsibilities are detailed below:
+The technology stack and operational components are detailed below:
 
 | Technology | Intended Responsibility | Implementation Status |
 | :--- | :--- | :--- |
-| **Python** | Event simulation engine, failure triggers, utility automation scripts | Planned (Day 2+) |
-| **Apache Kafka** | Real-time event broker for raw, valid, and quarantine streams | Planned (Day 2+) |
-| **Apache Flink** | Stateful stream processing, windowed error rate calculation, parsing | Planned (Day 3+) |
-| **Apache Iceberg** | Open table format for ACID lakehouse storage & time travel queries | Planned (Day 3+) |
-| **MinIO** | S3-compatible object storage for Apache Iceberg Parquet data | Planned (Day 2+) |
-| **PostgreSQL** | Relational metadata store for incidents, quarantine logs, & audit trails | Planned (Day 2+) |
-| **FastAPI** | Telemetry REST API & WebSocket server for real-time observability | Planned (Day 5+) |
-| **React** | Web dashboard framework for platform monitoring | Planned (Day 5+) |
-| **TypeScript** | Type-safe frontend application code | Planned (Day 5+) |
-| **React Flow** | Interactive data lineage DAG visualization | Planned (Day 5+) |
-| **Prometheus** | Metric collection for consumer lag, throughput, and error rates | Planned (Day 4+) |
-| **Grafana** | Visual telemetry dashboards and operational graphs | Planned (Day 4+) |
-| **Slack** | Automated incident alert notification webhooks | Planned (Day 4+) |
-| **Docker / Compose** | Containerized reproducible local development environment | Architecture Placeholder (Day 1) |
-| **Pytest** | Testing framework for quality rules and end-to-end failure injection | Planned (Day 6+) |
-| **GitHub Actions** | CI/CD pipeline automation for testing and validation | Planned (Day 6+) |
+| **Python** | Event simulation engine, failure triggers, utility automation scripts | Implemented (Day 4+) |
+| **Apache Kafka** | Real-time event broker for raw, valid, and quarantine streams | Implemented (Day 3+) |
+| **Apache Flink** | Stateful stream processing, windowed error rate calculation, parsing | Implemented (Day 11+) |
+| **Apache Iceberg** | Open table format for ACID lakehouse storage & time travel queries | Implemented (Day 9+) |
+| **MinIO** | S3-compatible object storage for Apache Iceberg Parquet data | Implemented (Day 8+) |
+| **PostgreSQL** | Relational metadata store for incidents, quarantine logs, & audit trails | Implemented (Day 22+) |
+| **FastAPI** | Telemetry REST API & WebSockets server for real-time observability | Implemented (Day 23+) |
+| **React** | Web dashboard framework for platform monitoring | Implemented (Day 25+) |
+| **TypeScript** | Type-safe frontend application code | Implemented (Day 25+) |
+| **React Flow** | Interactive data lineage DAG visualization | Implemented (Day 25+) |
+| **Prometheus** | Metric collection for consumer lag, throughput, and error rates | Implemented (Day 7+) |
+| **Grafana** | Visual telemetry dashboards and operational graphs | Implemented (Day 7+) |
+| **Slack** | Automated incident alert notification webhooks | Implemented (Day 24+) |
+| **Docker / Compose** | Containerized reproducible local development environment | Implemented (Day 2+) |
+| **Pytest** | Testing framework for quality rules and end-to-end failure injection | Implemented (Day 14+) |
+| **GitHub Actions** | CI/CD pipeline automation for testing and validation | Implemented |
 
 ---
 
@@ -345,52 +346,26 @@ icestream/
 ├── README.md                 # Main project overview & architecture specification
 ├── LICENSE                   # MIT License (2026 IceStream Contributors)
 ├── .gitignore                # Comprehensive environment & artifact ignore rules
-├── .env.example              # Configuration variable placeholders (No credentials)
-├── docker-compose.yml        # Architecture placeholder Docker Compose spec
+├── .env.example              # Configuration variable placeholders
+├── docker-compose.yml        # Infrastructure Docker Compose specification
+├── start.sh                  # One-command root startup & management script
 │
-├── generator/                # [Planned Phase 2] Python event simulation engine
-│   └── README.md             # Component specification & inputs/outputs
-│
-├── kafka/                    # [Planned Phase 2] Kafka topic & schema registry specs
-│   └── README.md             # Component specification & inputs/outputs
-│
-├── flink/                    # [Planned Phase 3] Flink streaming jobs & windowing logic
-│   └── README.md             # Component specification & inputs/outputs
-│
-├── iceberg/                  # [Planned Phase 3] Iceberg catalog & schema evolution
-│   └── README.md             # Component specification & inputs/outputs
-│
-├── quality-engine/           # [Planned Phase 4] Quality rules & circuit breaker state
-│   └── README.md             # Component specification & inputs/outputs
-│
-├── backend/                  # [Planned Phase 5] FastAPI REST & WebSockets server
-│   └── README.md             # Component specification & inputs/outputs
-│
-├── frontend/                 # [Planned Phase 5] React + React Flow dashboard UI
-│   └── README.md             # Component specification & inputs/outputs
-│
-├── monitoring/               # [Planned Phase 4] Prometheus metrics & Grafana dashboards
-│   └── README.md             # Component specification & inputs/outputs
-│
-├── tests/                    # [Planned Phase 6] Pytest suite & failure injection tests
-│   └── README.md             # Component specification & inputs/outputs
-│
-├── docs/                     # Comprehensive project documentation
-│   ├── architecture.md       # Target architecture & component breakdown
-│   ├── data-flow.md          # 15-stage data lifecycle specification
-│   ├── failure-scenarios.md  # 15 failure scenarios & resilience matrix
-│   ├── recovery-strategy.md  # Circuit breaker state machine & self-healing logic
-│   └── diagrams/             # Visual Mermaid diagram sources
-│       ├── architecture.mmd  # Architecture Mermaid diagram source
-│       └── data-flow.mmd     # Data flow sequence Mermaid diagram source
-│
-└── scripts/                  # [Planned Phase 2-6] Automation & setup scripts
-    └── README.md             # Component specification & inputs/outputs
+├── generator/                # Python event simulation & fault injection engine
+├── kafka/                    # Kafka topic definitions, scripts & schemas
+├── flink/                    # Flink SQL streaming jobs & recovery scripts
+├── iceberg/                  # Iceberg catalog setup & table initialization scripts
+├── quality-engine/           # Data quality rules, circuit breaker, detectors & remediation
+├── backend/                  # FastAPI REST API & backend service layer
+├── frontend/                 # React 18 + React Flow observability dashboard UI
+├── monitoring/               # Prometheus metrics & Grafana dashboard configurations
+├── tests/                    # Pytest unit, integration & E2E failure injection tests
+├── docs/                     # Technical architecture documentation & reports
+└── scripts/                  # Automated initialization, verification & checkpoint scripts
 ```
 
 ---
 
-## 11. Planned Observability Capabilities
+## 11. Observability Capabilities
 
 - **Real-Time Error Telemetry**: Dynamic error rate calculation over sliding time windows.
 - **Interactive Lineage DAG**: React Flow UI rendering pipeline nodes, consumer lag, and state.
@@ -400,7 +375,7 @@ icestream/
 
 ---
 
-## 12. Planned Testing Strategy
+## 12. Testing Strategy
 
 - **Unit Testing**: Pytest suite validating quality rules and schema enforcement.
 - **Integration Testing**: Kafka-Flink-Iceberg local container test pipeline.
@@ -411,15 +386,13 @@ icestream/
 
 ## 13. Development Roadmap & Implementation Phases
 
-- [x] **Phase 1 — Architecture & Environment**:
-  - [x] Day 1: Architecture specification, repository design, docs, diagrams, and placeholders.
-  - [x] Day 2: Local Docker infrastructure (Kafka KRaft, MinIO, PostgreSQL, Flink, Prometheus, Grafana).
-  - [x] Day 3: Kafka architecture, 6 topics, partition/retention rules, management scripts, and end-to-end Python verification tests.
-- [ ] **Phase 2 — Streaming Backbone & Ingestion**: Event generator, MinIO bucket setup, PostgreSQL metadata schema.
-- [ ] **Phase 3 — Stream Processing & Lakehouse Storage**: Flink validation job, Iceberg catalog tables, time travel.
-- [ ] **Phase 4 — Quality Engine & Observability**: Error rate windowing, circuit breaker state machine, Prometheus/Grafana monitoring, Slack alerts.
-- [ ] **Phase 5 — Control Plane & UI**: FastAPI telemetry backend, React + React Flow lineage visualizer.
-- [ ] **Phase 6 — Testing & Automation**: End-to-end failure injection, automated self-healing verification, documentation polish.
+- [x] **Phase 1 — Architecture & Environment**: Architecture specification, repository design, Docker infrastructure, Kafka topics.
+- [x] **Phase 2 — Streaming Backbone & Ingestion**: Event generator, MinIO bucket setup, PostgreSQL metadata schema.
+- [x] **Phase 3 — Stream Processing & Lakehouse Storage**: Flink streaming pipeline, Iceberg catalog tables, ACID audit.
+- [x] **Phase 4 — Quality Engine & Observability**: Error rate windowing, Great Expectations integration, Prometheus/Grafana metrics.
+- [x] **Phase 5 — Self-Healing & Remediation**: Circuit breaker state machine, quarantine DLQ, automated remediation workflow.
+- [x] **Phase 6 — Control Plane & Alerts**: FastAPI telemetry backend, Slack incident webhooks & incident lifecycle.
+- [x] **Phase 7 — Observability UI**: React + React Flow lineage visualizer, interactive diagnostic panel, status mapping polish.
 
 ---
 
@@ -438,7 +411,7 @@ cd icestream
 ## 15. Initial Setup Instructions (Phase 1)
 
 1. **Verify Environment Variables**:
-   Copy `.env.example` to `.env` to view planned configuration variables:
+   Copy `.env.example` to `.env` to view configuration variables:
    ```bash
    cp .env.example .env
    ```

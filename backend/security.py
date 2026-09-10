@@ -17,20 +17,25 @@ security_scheme = HTTPBearer(auto_error=False)
 def verify_api_token(
     credentials: Optional[HTTPAuthorizationCredentials] = Security(security_scheme),
 ) -> str:
-    """Verify Bearer token for protected pipeline control endpoints using constant-time comparison."""
-    expected_token = os.getenv("ICESTREAM_API_TOKEN")
-    if not expected_token and os.path.exists(".env"):
+    """Verify Bearer token for protected pipeline control endpoints using constant-time comparison.
+
+    Supports comma-separated tokens in ICESTREAM_API_TOKEN for zero-downtime key rotation.
+    """
+    raw_env_tokens = os.getenv("ICESTREAM_API_TOKEN", "")
+    if not raw_env_tokens and os.path.exists(".env"):
         try:
             with open(".env", "r") as f:
                 for line in f:
                     line = line.strip()
                     if line.startswith("ICESTREAM_API_TOKEN="):
-                        expected_token = line.split("=", 1)[1].strip("\"'")
+                        raw_env_tokens = line.split("=", 1)[1].strip("\"'")
                         break
         except Exception:
             pass
 
-    if not expected_token:
+    valid_tokens = [t.strip() for t in raw_env_tokens.split(",") if t.strip()]
+
+    if not valid_tokens:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Server Security Configuration Error: ICESTREAM_API_TOKEN environment variable is not configured.",
@@ -44,7 +49,16 @@ def verify_api_token(
         )
 
     provided_token = credentials.credentials.strip()
-    if not secrets.compare_digest(provided_token, expected_token):
+    if not provided_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized: Token cannot be empty.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Constant-time comparison across all valid configured tokens
+    is_valid = any(secrets.compare_digest(provided_token, expected) for expected in valid_tokens)
+    if not is_valid:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Unauthorized: Invalid API token.",
