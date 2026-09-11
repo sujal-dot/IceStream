@@ -25,10 +25,17 @@ export class ApiTokenManager {
   }
 
   /**
+   * Check if a custom authorization token is configured.
+   */
+  static hasToken(): boolean {
+    return Boolean(ApiTokenManager.getToken());
+  }
+
+  /**
    * Set or update the active authorization Bearer token.
    */
   static setToken(token: string): void {
-    const trimmed = token.strip ? token.strip() : token.trim();
+    const trimmed = typeof token === 'string' ? token.trim() : '';
     inMemoryToken = trimmed;
     try {
       sessionStorage.setItem(TOKEN_STORAGE_KEY, trimmed);

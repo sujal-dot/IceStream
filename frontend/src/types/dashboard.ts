@@ -151,15 +151,57 @@ export interface QualityResponse {
   top_failures?: Record<string, number>;
 }
 
-export interface NodeDiagnosticData {
-  nodeId: string;
-  nodeLabel: string;
+export type NavView =
+  | 'dashboard'
+  | 'pipeline'
+  | 'lineage'
+  | 'quality'
+  | 'schema'
+  | 'quarantine'
+  | 'iceberg'
+  | 'events'
+  | 'incidents'
+  | 'system-health'
+  | 'settings';
+
+export interface SystemHealthResponse {
   status: string;
-  errorRate: number;
-  topFailures: Record<string, number>;
-  circuitState: string;
-  startedAt?: string;
-  expectedRecovery: string;
-  remediationStage?: string;
-  activeIncident?: IncidentItem;
+  service: string;
+  version: string;
+  timestamp: string;
+  dependencies: Record<string, string>;
+}
+
+export interface SchemaChangeItem {
+  field: string;
+  change: string;
+  expected?: string;
+  actual?: string;
+}
+
+export interface SchemaDriftResponse {
+  drift_detected: boolean;
+  current_version: string;
+  previous_version: string;
+  severity: string;
+  changes: SchemaChangeItem[];
+  timestamp: string;
+}
+
+export interface EventItem {
+  event_id: string;
+  event_timestamp: string;
+  order_id: string;
+  currency: string;
+  amount: number;
+  payment_status: string;
+  status: string;
+  failure_reason?: string;
+  schema_version?: string;
+  payload_json?: string;
+}
+
+export interface EventListResponse {
+  items: EventItem[];
+  total: number;
 }

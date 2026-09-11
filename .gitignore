@@ -108,3 +108,5 @@ flink/lib/
 
 # Local Audit Artifacts
 artifacts/
+*.db
+

@@ -4,6 +4,8 @@ import {
   MetricsResponse,
   PipelineStatusResponse,
   QualityResponse,
+  SchemaDriftResponse,
+  SystemHealthResponse,
 } from '../types/dashboard';
 import { ApiLineageResponse } from '../types/lineage';
 import { MetricsApiService } from '../services/metricsApi';
@@ -11,6 +13,7 @@ import { PipelineApiService } from '../services/pipelineApi';
 import { LineageApiService } from '../services/lineageApi';
 import { IncidentsApiService } from '../services/incidentsApi';
 import { QualityApiService } from '../services/qualityApi';
+import { SchemaApiService } from '../services/schemaApi';
 
 export interface UseDashboardDataReturn {
   metrics: MetricsResponse | null;
@@ -18,6 +21,8 @@ export interface UseDashboardDataReturn {
   lineage: ApiLineageResponse | null;
   incidents: IncidentItem[];
   quality: QualityResponse | null;
+  systemHealth: SystemHealthResponse | null;
+  schemaDrift: SchemaDriftResponse | null;
   isLoading: boolean;
   isRefreshing: boolean;
   errors: {
@@ -26,17 +31,21 @@ export interface UseDashboardDataReturn {
     lineage?: string;
     incidents?: string;
     quality?: string;
+    systemHealth?: string;
+    schemaDrift?: string;
   };
   lastUpdated: string | null;
   refreshData: (manual?: boolean) => Promise<void>;
 }
 
-export const useDashboardData = (pollIntervalMs: number = 1000): UseDashboardDataReturn => {
+export const useDashboardData = (pollIntervalMs: number = 2000): UseDashboardDataReturn => {
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
   const [pipelineStatus, setPipelineStatus] = useState<PipelineStatusResponse | null>(null);
   const [lineage, setLineage] = useState<ApiLineageResponse | null>(null);
   const [incidents, setIncidents] = useState<IncidentItem[]>([]);
   const [quality, setQuality] = useState<QualityResponse | null>(null);
+  const [systemHealth, setSystemHealth] = useState<SystemHealthResponse | null>(null);
+  const [schemaDrift, setSchemaDrift] = useState<SchemaDriftResponse | null>(null);
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
@@ -46,6 +55,8 @@ export const useDashboardData = (pollIntervalMs: number = 1000): UseDashboardDat
     lineage?: string;
     incidents?: string;
     quality?: string;
+    systemHealth?: string;
+    schemaDrift?: string;
   }>({});
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
@@ -98,6 +109,22 @@ export const useDashboardData = (pollIntervalMs: number = 1000): UseDashboardDat
       newErrors.quality = err.message || 'Quality API error';
     }
 
+    // 6. Fetch System Health
+    try {
+      const healthRes = await MetricsApiService.getSystemHealth();
+      if (isMountedRef.current) setSystemHealth(healthRes);
+    } catch (err: any) {
+      newErrors.systemHealth = err.message || 'System health API error';
+    }
+
+    // 7. Fetch Schema Drift
+    try {
+      const driftRes = await SchemaApiService.getSchemaDrift();
+      if (isMountedRef.current) setSchemaDrift(driftRes);
+    } catch (err: any) {
+      newErrors.schemaDrift = err.message || 'Schema drift API error';
+    }
+
     if (isMountedRef.current) {
       setErrors(newErrors);
       setLastUpdated(new Date().toLocaleTimeString());
@@ -126,6 +153,8 @@ export const useDashboardData = (pollIntervalMs: number = 1000): UseDashboardDat
     lineage,
     incidents,
     quality,
+    systemHealth,
+    schemaDrift,
     isLoading,
     isRefreshing,
     errors,

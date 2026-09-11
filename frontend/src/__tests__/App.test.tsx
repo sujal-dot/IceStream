@@ -7,9 +7,14 @@ import { PipelineApiService } from '../services/pipelineApi';
 import { LineageApiService } from '../services/lineageApi';
 import { IncidentsApiService } from '../services/incidentsApi';
 import { QualityApiService } from '../services/qualityApi';
+import { SchemaApiService } from '../services/schemaApi';
 
 vi.mock('../services/metricsApi', () => ({
-  MetricsApiService: { getMetrics: vi.fn() },
+  MetricsApiService: {
+    getMetrics: vi.fn(),
+    getCircuitBreakerStatus: vi.fn(),
+    getSystemHealth: vi.fn(),
+  },
 }));
 
 vi.mock('../services/pipelineApi', () => ({
@@ -26,6 +31,10 @@ vi.mock('../services/incidentsApi', () => ({
 
 vi.mock('../services/qualityApi', () => ({
   QualityApiService: { getQuality: vi.fn() },
+}));
+
+vi.mock('../services/schemaApi', () => ({
+  SchemaApiService: { getSchemaDrift: vi.fn() },
 }));
 
 describe('App Navigation Integration', () => {
@@ -68,6 +77,23 @@ describe('App Navigation Integration', () => {
       history: [],
     });
 
+    vi.mocked(MetricsApiService.getSystemHealth).mockResolvedValue({
+      status: 'ok',
+      service: 'icestream-backend',
+      version: '0.23.0',
+      timestamp: new Date().toISOString(),
+      dependencies: { postgres: 'ok', iceberg_catalog: 'ok', quality_engine: 'ok' },
+    });
+
+    vi.mocked(SchemaApiService.getSchemaDrift).mockResolvedValue({
+      drift_detected: false,
+      current_version: 'v2.1.0',
+      previous_version: 'v2.0.0',
+      severity: 'NONE',
+      changes: [],
+      timestamp: new Date().toISOString(),
+    });
+
     vi.mocked(LineageApiService.getLineage).mockResolvedValue({
       nodes: [
         { id: 'kafka', type: 'source', label: 'Kafka', status: 'HEALTHY' },
@@ -101,29 +127,28 @@ describe('App Navigation Integration', () => {
     });
   });
 
-  it('allows seamless navigation from Dashboard to Lineage DAG and back without page refresh', async () => {
+  it('allows seamless navigation between Control Plane sections', async () => {
     render(<App />);
 
-    // Initially on Dashboard
+    // Initially on Dashboard Overview
     await waitFor(() => {
       expect(screen.getByText('Error Rate Timeline')).toBeInTheDocument();
     });
 
-    // Click 'Lineage DAG' in top nav header
-    const lineageNavBtn = screen.getByRole('button', { name: /Lineage DAG/i });
-    fireEvent.click(lineageNavBtn);
+    // Click 'Pipeline Topology' in sidebar nav
+    const pipelineNavBtn = screen.getByText('Pipeline Topology');
+    fireEvent.click(pipelineNavBtn);
 
-    // Now on LineagePage with Header and Back button present
+    // Verify navigation to Pipeline Topology view
     await waitFor(() => {
-      expect(screen.getByText('Back to Dashboard')).toBeInTheDocument();
-      expect(screen.getByText('Pipeline Lineage')).toBeInTheDocument();
+      expect(screen.getByText('Live Pipeline Topology & Data Lineage')).toBeInTheDocument();
     });
 
-    // Click 'Back to Dashboard' button
-    const backBtn = screen.getByText('Back to Dashboard');
-    fireEvent.click(backBtn);
+    // Click 'Overview Dashboard' in sidebar nav to return to Dashboard
+    const overviewNavBtn = screen.getByText('Overview Dashboard');
+    fireEvent.click(overviewNavBtn);
 
-    // Returns to Dashboard
+    // Returns to Overview Dashboard
     await waitFor(() => {
       expect(screen.getByText('Error Rate Timeline')).toBeInTheDocument();
     });
