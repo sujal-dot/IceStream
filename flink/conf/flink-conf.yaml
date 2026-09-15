@@ -1,7 +1,8 @@
 # ==============================================================================
-# IceStream - Apache Flink S3 & Cluster Configuration Specification
+# IceStream - Apache Flink High Availability (HA) & S3 Storage Specification
 # ==============================================================================
 # Flink Release: 1.18.1
+# High Availability Mode: ZooKeeper / Kubernetes Leader Election
 # Storage Layer: MinIO S3-Compatible Object Store
 # ==============================================================================
 
@@ -20,6 +21,16 @@ query.server.port: 6125
 # Web Interface Configuration
 rest.port: 8081
 rest.address: 0.0.0.0
+
+# ------------------------------------------------------------------------------
+# Flink High Availability (HA) ZooKeeper / Kubernetes Configuration
+# ------------------------------------------------------------------------------
+# High availability service mode (zookeeper for Docker Compose, kubernetes for K8s)
+high-availability.type: zookeeper
+high-availability.zookeeper.quorum: zookeeper:2181
+high-availability.storageDir: s3://checkpoints/flink/ha/
+high-availability.zookeeper.path.root: /flink
+high-availability.jobmanager.port: 6123
 
 # ------------------------------------------------------------------------------
 # MinIO S3 Filesystem Plugin Configuration (flink-s3-fs-hadoop)
@@ -42,7 +53,7 @@ fs.s3a.access.key: icestream_minio
 fs.s3a.secret.key: icestream_minio_secret
 
 # ------------------------------------------------------------------------------
-# State Backend & Checkpointing Target Configuration (Phase 3 Target)
+# State Backend & Checkpointing Target Configuration
 # ------------------------------------------------------------------------------
 state.backend: filesystem
 state.checkpoints.dir: s3://checkpoints/flink/
@@ -50,7 +61,7 @@ state.savepoints.dir: s3://checkpoints/flink-savepoints/
 
 # Restart Strategy Configuration
 restart-strategy.type: fixed-delay
-restart-strategy.fixed-delay.attempts: 3
+restart-strategy.fixed-delay.attempts: 5
 restart-strategy.fixed-delay.delay: 10s
 
 # Environment Plugins

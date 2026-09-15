@@ -142,6 +142,29 @@ class StorageBackend:
                 recovered_event_count INT DEFAULT 0
             );
             """,
+            """
+            CREATE TABLE IF NOT EXISTS metrics_snapshot_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT if_sqlite,
+                service VARCHAR(64) NOT NULL DEFAULT 'icestream-quality-engine',
+                window_seconds INT NOT NULL DEFAULT 60,
+                timestamp TIMESTAMP NOT NULL,
+                total_events INT NOT NULL DEFAULT 0,
+                valid_events INT NOT NULL DEFAULT 0,
+                failed_events INT NOT NULL DEFAULT 0,
+                error_rate REAL NOT NULL DEFAULT 0.0,
+                error_rate_percent REAL NOT NULL DEFAULT 0.0,
+                health VARCHAR(32) NOT NULL DEFAULT 'HEALTHY'
+            );
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS window_event_counts (
+                window_seconds INT PRIMARY KEY,
+                total_events INT NOT NULL DEFAULT 0,
+                valid_events INT NOT NULL DEFAULT 0,
+                failed_events INT NOT NULL DEFAULT 0,
+                updated_at TIMESTAMP NOT NULL
+            );
+            """,
         ]
 
         # Columns to ensure exist for backwards compatibility with existing DB tables
@@ -862,6 +885,180 @@ class StorageBackend:
                 rows = cursor.fetchall()
             conn.close()
             return [dict(r) for r in rows]
+
+    # --- Metrics Durability Methods ---
+
+    def save_metrics_snapshot(
+        self,
+        service: str,
+        window_seconds: int,
+        timestamp: str,
+        total_events: int,
+        valid_events: int,
+        failed_events: int,
+        error_rate: float,
+        error_rate_percent: float,
+        health: str,
+    ) -> None:
+        """Persist calculated metrics point into metrics_snapshot_history."""
+        ts_val = timestamp
+        if self.use_sqlite:
+            lock = getattr(self, "_sqlite_lock", None)
+            if lock:
+                with lock:
+                    conn = self._get_connection()
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        """
+                        INSERT INTO metrics_snapshot_history (
+                            service, window_seconds, timestamp, total_events, valid_events, failed_events, error_rate, error_rate_percent, health
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (service, window_seconds, ts_val, total_events, valid_events, failed_events, error_rate, error_rate_percent, health),
+                    )
+                    conn.commit()
+            else:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    INSERT INTO metrics_snapshot_history (
+                        service, window_seconds, timestamp, total_events, valid_events, failed_events, error_rate, error_rate_percent, health
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (service, window_seconds, ts_val, total_events, valid_events, failed_events, error_rate, error_rate_percent, health),
+                )
+                conn.commit()
+        else:
+            conn = self._get_connection()
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO metrics_snapshot_history (
+                        service, window_seconds, timestamp, total_events, valid_events, failed_events, error_rate, error_rate_percent, health
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (service, window_seconds, ts_val, total_events, valid_events, failed_events, error_rate, error_rate_percent, health),
+                )
+            conn.commit()
+            conn.close()
+
+    def get_metrics_snapshot_history(self, limit: int = 60) -> List[Dict[str, Any]]:
+        """Retrieve recent metrics history points from persistent database."""
+        if self.use_sqlite:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT timestamp, error_rate, error_rate_percent, total_events, failed_events, health FROM metrics_snapshot_history ORDER BY id DESC LIMIT ?",
+                (limit,),
+            )
+            rows = cursor.fetchall()
+            res = [dict(r) for r in rows]
+            res.reverse()
+            return res
+        else:
+            conn = self._get_connection()
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT timestamp, error_rate, error_rate_percent, total_events, failed_events, health FROM metrics_snapshot_history ORDER BY id DESC LIMIT %s",
+                    (limit,),
+                )
+                rows = cursor.fetchall()
+            conn.close()
+            res = [dict(r) for r in rows]
+            res.reverse()
+            return res
+
+    def save_window_event_counts(
+        self,
+        window_seconds: int,
+        valid_events: int,
+        failed_events: int,
+        updated_at: Optional[datetime] = None,
+    ) -> None:
+        """Upsert current sliding window event counters for persistence."""
+        ts = (updated_at or datetime.now(timezone.utc)).isoformat()
+        total_events = valid_events + failed_events
+
+        if self.use_sqlite:
+            lock = getattr(self, "_sqlite_lock", None)
+            if lock:
+                with lock:
+                    conn = self._get_connection()
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        """
+                        INSERT INTO window_event_counts (window_seconds, total_events, valid_events, failed_events, updated_at)
+                        VALUES (?, ?, ?, ?, ?)
+                        ON CONFLICT(window_seconds) DO UPDATE SET
+                            total_events=excluded.total_events,
+                            valid_events=excluded.valid_events,
+                            failed_events=excluded.failed_events,
+                            updated_at=excluded.updated_at;
+                        """,
+                        (window_seconds, total_events, valid_events, failed_events, ts),
+                    )
+                    conn.commit()
+            else:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    INSERT INTO window_event_counts (window_seconds, total_events, valid_events, failed_events, updated_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(window_seconds) DO UPDATE SET
+                        total_events=excluded.total_events,
+                        valid_events=excluded.valid_events,
+                        failed_events=excluded.failed_events,
+                        updated_at=excluded.updated_at;
+                    """,
+                    (window_seconds, total_events, valid_events, failed_events, ts),
+                )
+                conn.commit()
+        else:
+            conn = self._get_connection()
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO window_event_counts (window_seconds, total_events, valid_events, failed_events, updated_at)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT(window_seconds) DO UPDATE SET
+                        total_events=EXCLUDED.total_events,
+                        valid_events=EXCLUDED.valid_events,
+                        failed_events=EXCLUDED.failed_events,
+                        updated_at=EXCLUDED.updated_at;
+                    """,
+                    (window_seconds, total_events, valid_events, failed_events, ts),
+                )
+            conn.commit()
+            conn.close()
+
+    def get_window_event_counts(self, window_seconds: int) -> Optional[Dict[str, Any]]:
+        """Fetch persisted window event counts."""
+        if self.use_sqlite:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM window_event_counts WHERE window_seconds = ?",
+                (window_seconds,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return dict(row)
+        else:
+            conn = self._get_connection()
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT * FROM window_event_counts WHERE window_seconds = %s",
+                    (window_seconds,),
+                )
+                row = cursor.fetchone()
+            conn.close()
+            if not row:
+                return None
+            return dict(row)
+
 
 
 # Global singleton instance for app / services

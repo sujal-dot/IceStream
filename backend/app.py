@@ -229,8 +229,19 @@ def create_app(
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         return response
 
+    # Graceful Shutdown Handler for Durability
+    @app.on_event("shutdown")
+    def shutdown_event():
+        logger.info("[Shutdown] FastAPI backend shutting down gracefully. Flushing metrics buffer...")
+        try:
+            engine = get_error_rate_engine()
+            engine.get_metrics_snapshot()
+        except Exception as e:
+            logger.warning(f"Error flushing metrics snapshot during shutdown: {e}")
+
     # Register Routers
     app.include_router(pipeline.router)
+
     app.include_router(metrics.router)
     app.include_router(incidents.router)
     app.include_router(lineage.router)

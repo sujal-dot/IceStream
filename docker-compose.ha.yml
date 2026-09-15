@@ -1,0 +1,404 @@
+# ==============================================================================
+# IceStream - High Availability (HA) Docker Infrastructure Specification
+# ==============================================================================
+# High Availability Topology:
+#   - Multi-Broker Kafka Cluster (3 Brokers, KRaft Mode, RF=3, min.isr=2)
+#   - ZooKeeper (Flink HA Leader Election & State Lock)
+#   - Flink Active & Standby JobManagers (JobManager HA + S3 Checkpointing)
+#   - Multi-Worker FastAPI Backend (2 Backend nodes, 4 Uvicorn workers each)
+#   - Nginx Reverse Proxy Load Balancer (Round-robin traffic distribution)
+#   - MinIO Object Storage, PostgreSQL Metadata, Prometheus & Grafana
+# ==============================================================================
+
+name: icestream-ha
+
+services:
+  # ----------------------------------------------------------------------------
+  # Apache ZooKeeper - Flink JobManager HA Coordination
+  # ----------------------------------------------------------------------------
+  zookeeper:
+    image: zookeeper:3.9.2
+    container_name: icestream-ha-zookeeper
+    restart: unless-stopped
+    ports:
+      - "2181:2181"
+    environment:
+      ZOO_MY_ID: 1
+      ZOO_SERVERS: server.1=zookeeper:2888:3888;2181
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc localhost 2181 | grep imok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - icestream-ha-network
+
+  # ----------------------------------------------------------------------------
+  # Apache Kafka - Broker 1 (KRaft Node 1)
+  # ----------------------------------------------------------------------------
+  kafka1:
+    image: apache/kafka:3.7.0
+    container_name: icestream-ha-kafka1
+    restart: unless-stopped
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,DOCKER://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,DOCKER://kafka1:29092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,DOCKER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka1:9093,2@kafka2:9093,3@kafka3:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_CLUSTER_ID: ${KAFKA_CLUSTER_ID:-4L6g3nShT-eMCtK--X86sw}
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    volumes:
+      - icestream_ha_kafka1_data:/var/lib/kafka/data
+    networks:
+      - icestream-ha-network
+
+  # ----------------------------------------------------------------------------
+  # Apache Kafka - Broker 2 (KRaft Node 2)
+  # ----------------------------------------------------------------------------
+  kafka2:
+    image: apache/kafka:3.7.0
+    container_name: icestream-ha-kafka2
+    restart: unless-stopped
+    ports:
+      - "9094:9094"
+    environment:
+      KAFKA_NODE_ID: 2
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9094,CONTROLLER://0.0.0.0:9093,DOCKER://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9094,DOCKER://kafka2:29092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,DOCKER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka1:9093,2@kafka2:9093,3@kafka3:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_CLUSTER_ID: ${KAFKA_CLUSTER_ID:-4L6g3nShT-eMCtK--X86sw}
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9094 > /dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    volumes:
+      - icestream_ha_kafka2_data:/var/lib/kafka/data
+    networks:
+      - icestream-ha-network
+
+  # ----------------------------------------------------------------------------
+  # Apache Kafka - Broker 3 (KRaft Node 3)
+  # ----------------------------------------------------------------------------
+  kafka3:
+    image: apache/kafka:3.7.0
+    container_name: icestream-ha-kafka3
+    restart: unless-stopped
+    ports:
+      - "9095:9095"
+    environment:
+      KAFKA_NODE_ID: 3
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9095,CONTROLLER://0.0.0.0:9093,DOCKER://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9095,DOCKER://kafka3:29092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,DOCKER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka1:9093,2@kafka2:9093,3@kafka3:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_CLUSTER_ID: ${KAFKA_CLUSTER_ID:-4L6g3nShT-eMCtK--X86sw}
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9095 > /dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    volumes:
+      - icestream_ha_kafka3_data:/var/lib/kafka/data
+    networks:
+      - icestream-ha-network
+
+  # ----------------------------------------------------------------------------
+  # MinIO - S3 Object Store
+  # ----------------------------------------------------------------------------
+  minio:
+    image: minio/minio:RELEASE.2024-03-21T23-13-43Z
+    container_name: icestream-ha-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-icestream_minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-icestream_minio_secret}
+    healthcheck:
+      test: ["CMD-SHELL", "mc ready local || curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - icestream_ha_minio_data:/data
+    networks:
+      - icestream-ha-network
+
+  # ----------------------------------------------------------------------------
+  # PostgreSQL Metadata Store
+  # ----------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: icestream-ha-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-icestream_db}
+      POSTGRES_USER: ${POSTGRES_USER:-icestream_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-icestream_pass}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-icestream_user} -d ${POSTGRES_DB:-icestream_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - icestream_ha_postgres_data:/var/lib/postgresql/data
+    networks:
+      - icestream-ha-network
+
+  # ----------------------------------------------------------------------------
+  # Apache Flink JobManager Node 1 (HA Primary)
+  # ----------------------------------------------------------------------------
+  flink-jobmanager-1:
+    image: flink:1.18.1-scala_2.12-java11
+    container_name: icestream-ha-flink-jobmanager-1
+    restart: unless-stopped
+    command: jobmanager
+    ports:
+      - "8081:8081"
+    environment:
+      ENABLE_BUILT_IN_PLUGINS: "flink-s3-fs-hadoop-1.18.1.jar"
+      AWS_REGION: ${MINIO_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-icestream_minio}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-icestream_minio_secret}
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager-1
+        high-availability.type: zookeeper
+        high-availability.zookeeper.quorum: zookeeper:2181
+        high-availability.storageDir: s3://checkpoints/flink/ha/
+        high-availability.zookeeper.path.root: /flink
+        s3.endpoint: http://minio:9000
+        s3.path.style.access: true
+        s3.access-key: ${MINIO_ROOT_USER:-icestream_minio}
+        s3.secret-key: ${MINIO_ROOT_PASSWORD:-icestream_minio_secret}
+        s3.ssl.enabled: false
+        state.backend: filesystem
+        state.checkpoints.dir: s3://checkpoints/flink/
+        state.savepoints.dir: s3://checkpoints/flink-savepoints/
+        restart-strategy.type: fixed-delay
+        restart-strategy.fixed-delay.attempts: 5
+        restart-strategy.fixed-delay.delay: 10s
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/v1/overview || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - icestream-ha-network
+
+  # ----------------------------------------------------------------------------
+  # Apache Flink JobManager Node 2 (HA Standby)
+  # ----------------------------------------------------------------------------
+  flink-jobmanager-2:
+    image: flink:1.18.1-scala_2.12-java11
+    container_name: icestream-ha-flink-jobmanager-2
+    restart: unless-stopped
+    command: jobmanager
+    ports:
+      - "8082:8081"
+    environment:
+      ENABLE_BUILT_IN_PLUGINS: "flink-s3-fs-hadoop-1.18.1.jar"
+      AWS_REGION: ${MINIO_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-icestream_minio}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-icestream_minio_secret}
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager-2
+        high-availability.type: zookeeper
+        high-availability.zookeeper.quorum: zookeeper:2181
+        high-availability.storageDir: s3://checkpoints/flink/ha/
+        high-availability.zookeeper.path.root: /flink
+        s3.endpoint: http://minio:9000
+        s3.path.style.access: true
+        s3.access-key: ${MINIO_ROOT_USER:-icestream_minio}
+        s3.secret-key: ${MINIO_ROOT_PASSWORD:-icestream_minio_secret}
+        s3.ssl.enabled: false
+        state.backend: filesystem
+        state.checkpoints.dir: s3://checkpoints/flink/
+        state.savepoints.dir: s3://checkpoints/flink-savepoints/
+        restart-strategy.type: fixed-delay
+        restart-strategy.fixed-delay.attempts: 5
+        restart-strategy.fixed-delay.delay: 10s
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - icestream-ha-network
+
+  # ----------------------------------------------------------------------------
+  # Apache Flink TaskManager Workers (Worker 1 & Worker 2)
+  # ----------------------------------------------------------------------------
+  flink-taskmanager-1:
+    image: flink:1.18.1-scala_2.12-java11
+    container_name: icestream-ha-flink-taskmanager-1
+    restart: unless-stopped
+    command: taskmanager
+    environment:
+      ENABLE_BUILT_IN_PLUGINS: "flink-s3-fs-hadoop-1.18.1.jar"
+      AWS_REGION: ${MINIO_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-icestream_minio}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-icestream_minio_secret}
+      FLINK_PROPERTIES: |
+        high-availability.type: zookeeper
+        high-availability.zookeeper.quorum: zookeeper:2181
+        high-availability.storageDir: s3://checkpoints/flink/ha/
+        high-availability.zookeeper.path.root: /flink
+        taskmanager.numberOfTaskSlots: 2
+        s3.endpoint: http://minio:9000
+        s3.path.style.access: true
+        s3.access-key: ${MINIO_ROOT_USER:-icestream_minio}
+        s3.secret-key: ${MINIO_ROOT_PASSWORD:-icestream_minio_secret}
+        s3.ssl.enabled: false
+        state.backend: filesystem
+        state.checkpoints.dir: s3://checkpoints/flink/
+        state.savepoints.dir: s3://checkpoints/flink-savepoints/
+    depends_on:
+      flink-jobmanager-1:
+        condition: service_healthy
+    networks:
+      - icestream-ha-network
+
+  flink-taskmanager-2:
+    image: flink:1.18.1-scala_2.12-java11
+    container_name: icestream-ha-flink-taskmanager-2
+    restart: unless-stopped
+    command: taskmanager
+    environment:
+      ENABLE_BUILT_IN_PLUGINS: "flink-s3-fs-hadoop-1.18.1.jar"
+      AWS_REGION: ${MINIO_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-icestream_minio}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-icestream_minio_secret}
+      FLINK_PROPERTIES: |
+        high-availability.type: zookeeper
+        high-availability.zookeeper.quorum: zookeeper:2181
+        high-availability.storageDir: s3://checkpoints/flink/ha/
+        high-availability.zookeeper.path.root: /flink
+        taskmanager.numberOfTaskSlots: 2
+        s3.endpoint: http://minio:9000
+        s3.path.style.access: true
+        s3.access-key: ${MINIO_ROOT_USER:-icestream_minio}
+        s3.secret-key: ${MINIO_ROOT_PASSWORD:-icestream_minio_secret}
+        s3.ssl.enabled: false
+        state.backend: filesystem
+        state.checkpoints.dir: s3://checkpoints/flink/
+        state.savepoints.dir: s3://checkpoints/flink-savepoints/
+    depends_on:
+      flink-jobmanager-1:
+        condition: service_healthy
+    networks:
+      - icestream-ha-network
+
+  # ----------------------------------------------------------------------------
+  # FastAPI Backend Service (Instance 1 & Instance 2 with 4 Uvicorn Workers each)
+  # ----------------------------------------------------------------------------
+  backend1:
+    image: icestream-backend:0.25.0
+    container_name: icestream-ha-backend1
+    restart: unless-stopped
+    command: python3 -m uvicorn backend.app:app --host 0.0.0.0 --port 8000 --workers 4
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-icestream_db}
+      POSTGRES_USER: ${POSTGRES_USER:-icestream_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-icestream_pass}
+      KAFKA_BOOTSTRAP_SERVERS: "kafka1:29092,kafka2:29092,kafka3:29092"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - icestream-ha-network
+
+  backend2:
+    image: icestream-backend:0.25.0
+    container_name: icestream-ha-backend2
+    restart: unless-stopped
+    command: python3 -m uvicorn backend.app:app --host 0.0.0.0 --port 8000 --workers 4
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-icestream_db}
+      POSTGRES_USER: ${POSTGRES_USER:-icestream_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-icestream_pass}
+      KAFKA_BOOTSTRAP_SERVERS: "kafka1:29092,kafka2:29092,kafka3:29092"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - icestream-ha-network
+
+  # ----------------------------------------------------------------------------
+  # Nginx Reverse Proxy Load Balancer for Backend API
+  # ----------------------------------------------------------------------------
+  backend-lb:
+    image: nginx:1.25-alpine
+    container_name: icestream-ha-backend-lb
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+    volumes:
+      - ./backend/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend1
+      - backend2
+    networks:
+      - icestream-ha-network
+
+networks:
+  icestream-ha-network:
+    name: icestream-ha-network
+    driver: bridge
+
+volumes:
+  icestream_ha_kafka1_data:
+  icestream_ha_kafka2_data:
+  icestream_ha_kafka3_data:
+  icestream_ha_minio_data:
+  icestream_ha_postgres_data:

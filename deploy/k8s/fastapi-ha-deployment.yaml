@@ -1,0 +1,91 @@
+# ==============================================================================
+# IceStream - FastAPI Backend High Availability Deployment & Autoscaling
+# ==============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: icestream-backend
+  namespace: icestream
+  labels:
+    app: icestream-backend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: icestream-backend
+  template:
+    metadata:
+      labels:
+        app: icestream-backend
+    spec:
+      containers:
+        - name: backend
+          image: icestream-backend:0.25.0
+          command: ["gunicorn", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "backend.app:app", "--bind", "0.0.0.0:8000"]
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: POSTGRES_HOST
+              value: "postgres"
+            - name: POSTGRES_DB
+              value: "icestream_db"
+            - name: ICESTREAM_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: icestream-secrets
+                  key: api-token
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1024Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: icestream-backend-service
+  namespace: icestream
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: 8000
+      name: http
+  selector:
+    app: icestream-backend
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: icestream-backend-hpa
+  namespace: icestream
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: icestream-backend
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

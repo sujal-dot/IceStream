@@ -1,0 +1,106 @@
+# ==============================================================================
+# IceStream - Apache Flink Kubernetes High Availability (KubernetesHaServices)
+# ==============================================================================
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: flink-service-account
+  namespace: icestream
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: flink-role
+  namespace: icestream
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps", "pods", "services"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: flink-role-binding
+  namespace: icestream
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: flink-role
+subjects:
+  - kind: ServiceAccount
+    name: flink-service-account
+    namespace: icestream
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-jobmanager
+  namespace: icestream
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: flink
+      component: jobmanager
+  template:
+    metadata:
+      labels:
+        app: flink
+        component: jobmanager
+    spec:
+      serviceAccountName: flink-service-account
+      containers:
+        - name: jobmanager
+          image: flink:1.18.1-scala_2.12-java11
+          args: ["standalone-jobmanager"]
+          ports:
+            - containerPort: 6123
+              name: rpc
+            - containerPort: 6124
+              name: blob
+            - containerPort: 8081
+              name: ui
+          env:
+            - name: FLINK_PROPERTIES
+              value: |
+                high-availability.type: kubernetes
+                high-availability.storageDir: s3://checkpoints/flink/ha-k8s/
+                restart-strategy.type: fixed-delay
+                restart-strategy.fixed-delay.attempts: 5
+                restart-strategy.fixed-delay.delay: 10s
+          readinessProbe:
+            httpGet:
+              path: /v1/overview
+              port: 8081
+            initialDelaySeconds: 10
+            periodSeconds: 5
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-taskmanager
+  namespace: icestream
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: flink
+      component: taskmanager
+  template:
+    metadata:
+      labels:
+        app: flink
+        component: taskmanager
+    spec:
+      serviceAccountName: flink-service-account
+      containers:
+        - name: taskmanager
+          image: flink:1.18.1-scala_2.12-java11
+          args: ["taskmanager"]
+          env:
+            - name: FLINK_PROPERTIES
+              value: |
+                high-availability.type: kubernetes
+                high-availability.storageDir: s3://checkpoints/flink/ha-k8s/
+                taskmanager.numberOfTaskSlots: 2

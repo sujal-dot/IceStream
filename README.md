@@ -55,7 +55,23 @@ To simulate telemetry with bad data injection, run in a separate terminal:
 PYTHONPATH=. .venv/bin/python generator/main.py --rate 1000 --error-rate 0.2 --metrics-port 8002
 ```
 
+### High Availability (HA) Deployment (3 Kafka Brokers RF=3, Flink HA, Multi-Worker Backend)
+
+```bash
+# 1. Start HA Docker Stack (3 Kafka KRaft Brokers, ZooKeeper, Dual JobManagers, Nginx Load Balancer)
+docker compose -f docker-compose.ha.yml up -d
+
+# 2. Initialize HA Topics with Replication Factor 3 and Min.ISR 2
+./scripts/kafka/create_topics.sh
+
+# 3. Test HA Failover & Resilience
+./scripts/ha/test_ha_failover.sh
+```
+
+For Kubernetes cloud deployment manifests and architectural details, see [`docs/high-availability-guide.md`](docs/high-availability-guide.md).
+
 ---
+
 
 ## 1. Project Description
 

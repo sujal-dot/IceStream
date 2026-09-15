@@ -1,22 +1,22 @@
 # ==============================================================================
 # IceStream Kafka Topic Topology & Specification
 # ==============================================================================
-# Single-node local development configuration.
-# Production configurations would increase replication_factor to >= 3.
+# High Availability (HA) Multi-Broker Specification (RF=3, min.isr=2)
 # ==============================================================================
 
 version: '1.0'
 
 defaults:
-  replication_factor: 1
-  min_in_sync_replicas: 1
+  replication_factor: 3
+  min_in_sync_replicas: 2
   cleanup_policy: "delete"
 
 topics:
   - name: "checkout-events"
     description: "Primary raw checkout event stream ingested from event producers"
     partitions: 3
-    replication_factor: 1
+    replication_factor: 3
+    min_in_sync_replicas: 2
     retention_days: 7
     retention_ms: 604800000
     segment_bytes: 1073741824
@@ -25,7 +25,8 @@ topics:
   - name: "checkout-valid"
     description: "Successfully validated events routed to Iceberg lakehouse sinks"
     partitions: 3
-    replication_factor: 1
+    replication_factor: 3
+    min_in_sync_replicas: 2
     retention_days: 7
     retention_ms: 604800000
     segment_bytes: 1073741824
@@ -34,7 +35,8 @@ topics:
   - name: "checkout-invalid"
     description: "Data-quality failure stream routed to quarantine store"
     partitions: 3
-    replication_factor: 1
+    replication_factor: 3
+    min_in_sync_replicas: 2
     retention_days: 14
     retention_ms: 1209600000
     segment_bytes: 1073741824
@@ -43,7 +45,8 @@ topics:
   - name: "checkout-dlq"
     description: "Dead-letter queue for unparseable or severely corrupt payloads"
     partitions: 3
-    replication_factor: 1
+    replication_factor: 3
+    min_in_sync_replicas: 2
     retention_days: 30
     retention_ms: 2592000000
     segment_bytes: 1073741824
@@ -52,7 +55,8 @@ topics:
   - name: "pipeline-control"
     description: "Pipeline control signals (circuit breaker trips, pause, resume)"
     partitions: 1
-    replication_factor: 1
+    replication_factor: 3
+    min_in_sync_replicas: 2
     retention_days: 7
     retention_ms: 604800000
     segment_bytes: 1073741824
@@ -61,7 +65,8 @@ topics:
   - name: "schema-events"
     description: "Schema registration, modification, and compatibility notifications"
     partitions: 1
-    replication_factor: 1
+    replication_factor: 3
+    min_in_sync_replicas: 2
     retention_days: 30
     retention_ms: 2592000000
     segment_bytes: 1073741824

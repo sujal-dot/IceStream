@@ -14,8 +14,10 @@ from typing import Any, Dict, List, Optional, Union
 from rules.base import EventStatus, ValidationSummary
 from rules.clock import Clock, SystemClock, parse_iso_timestamp
 from metrics.window import WindowAggregator, WindowMetrics
+from metrics.persistence import MetricsPersistenceStore
 
 logger = logging.getLogger("quality_engine.metrics.error_rate")
+
 
 
 class HealthStatus(str, Enum):
@@ -115,6 +117,7 @@ class ErrorRateEngine:
         config: Optional[ErrorRateConfig] = None,
         windows: Optional[List[int]] = None,
         clock: Optional[Clock] = None,
+        persistence: Optional[MetricsPersistenceStore] = None,
     ) -> None:
         self._config = config or ErrorRateConfig()
         self._config.validate()
@@ -124,10 +127,21 @@ class ErrorRateEngine:
         self._last_health_state: Dict[int, HealthStatus] = {}
         self._history: List[Dict[str, Any]] = []
 
+        self._persistence = persistence or MetricsPersistenceStore()
+
         self._window_aggregators: Dict[int, WindowAggregator] = {
             w: WindowAggregator(window_seconds=w, clock=self._clock)
             for w in self._window_sizes
         }
+
+        # Hydrate historical points from persistent storage
+        try:
+            stored_history = self._persistence.load_snapshot_history(limit=60)
+            if stored_history:
+                self._history = stored_history
+        except Exception as e:
+            logger.warning(f"Could not hydrate error rate engine history: {e}")
+
 
     @property
     def config(self) -> ErrorRateConfig:
@@ -286,7 +300,16 @@ class ErrorRateEngine:
                 if len(self._history) > 60:
                     self._history.pop(0)
 
+                # Persist metric snapshot point for durability across restarts
+                if getattr(self, "_persistence", None):
+                    try:
+                        self._persistence.save_snapshot_point("icestream-quality-engine", point, window_seconds=60)
+                        self._persistence.save_event_counts(60, m1.valid_events, m1.failed_events)
+                    except Exception as e:
+                        logger.warning(f"Could not save metrics snapshot to persistence: {e}")
+
             history_copy = list(self._history)
+
 
         return {
             "service": "icestream-quality-engine",

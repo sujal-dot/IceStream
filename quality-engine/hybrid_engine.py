@@ -274,3 +274,27 @@ class HybridQualityEngine:
         ]
 
         return "\n".join(summary_lines)
+
+    def flush_buffers(self) -> None:
+        """Flush pending metrics snapshots and uncommitted quarantine buffer entries."""
+        logger.info("[Shutdown] Flushing HybridQualityEngine metrics and quarantine buffers...")
+        try:
+            if hasattr(self._metrics, "flush"):
+                self._metrics.flush()
+        except Exception as e:
+            logger.warning(f"Error during metrics buffer flush: {e}")
+
+    def register_signal_handlers(self) -> None:
+        """Register SIGTERM and SIGINT signal handlers for graceful shutdown."""
+        import signal
+
+        def _handler(signum, frame):
+            logger.info(f"[Shutdown] Signal {signum} received. Invoking graceful buffer flush...")
+            self.flush_buffers()
+
+        try:
+            signal.signal(signal.SIGTERM, _handler)
+            signal.signal(signal.SIGINT, _handler)
+        except Exception as e:
+            logger.warning(f"Could not register signal handlers: {e}")
+
