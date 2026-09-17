@@ -25,7 +25,9 @@ class KafkaSourceConfig:
     bootstrap_servers: str = "kafka:29092"
     topic: str = "checkout-events"
     consumer_group: str = "icestream-flink-bronze"
-    startup_mode: str = "latest-offset"
+    startup_mode: str = "group-offsets"
+    auto_offset_reset: str = "earliest"
+    enable_auto_commit: bool = True
 
 
 @dataclass
@@ -49,6 +51,7 @@ class IcebergSinkConfig:
     target_table: str = "icestream.bronze.checkout_events"
     checkpoint_interval_ms: int = 30000
     checkpoint_dir: str = "s3://checkpoints/flink/bronze/"
+    savepoint_dir: str = "s3://checkpoints/flink-savepoints/"
     state_backend: str = "filesystem"
     restart_attempts: int = 3
     restart_delay_seconds: int = 10
@@ -69,10 +72,13 @@ class FlinkBronzePipeline:
         self.mapper_config = mapper_config or EventMapperConfig()
         self.iceberg_config = iceberg_config or IcebergSinkConfig()
 
-    def generate_sql_statement(self) -> str:
+    def generate_sql_statement(self, savepoint_path: Optional[str] = None) -> str:
         """Generate the complete Flink SQL execution script for the pipeline."""
         access_key = os.getenv("MINIO_ROOT_USER") or os.getenv("MINIO_ACCESS_KEY") or "icestream_minio"
         secret_key = os.getenv("MINIO_ROOT_PASSWORD") or os.getenv("MINIO_SECRET_KEY") or "icestream_minio_secret"
+        savepoint_restore_sql = ""
+        if savepoint_path:
+            savepoint_restore_sql = f"SET 'execution.savepoint.path' = '{savepoint_path}';\nSET 'execution.savepoint.ignore-unclaimed-state' = 'false';\n"
         sql = f"""-- IceStream Bronze Pipeline Job SQL
 CREATE CATALOG {self.iceberg_config.catalog_name} WITH (
   'type'='iceberg',
@@ -117,7 +123,8 @@ SET 'execution.checkpointing.timeout' = '60000ms';
 SET 'execution.checkpointing.min-pause' = '500ms';
 SET 'execution.checkpointing.max-concurrent-checkpoints' = '1';
 SET 'state.checkpoints.dir' = '{self.iceberg_config.checkpoint_dir}';
-SET 'state.backend' = '{self.iceberg_config.state_backend}';
+SET 'state.savepoints.dir' = '{self.iceberg_config.savepoint_dir}';
+{savepoint_restore_sql}SET 'state.backend' = '{self.iceberg_config.state_backend}';
 SET 'restart-strategy.type' = 'fixed-delay';
 SET 'restart-strategy.fixed-delay.attempts' = '{self.iceberg_config.restart_attempts}';
 SET 'restart-strategy.fixed-delay.delay' = '{self.iceberg_config.restart_delay_seconds}s';
@@ -149,6 +156,8 @@ CREATE TABLE IF NOT EXISTS kafka_checkout_events (
   'topic' = '{self.kafka_config.topic}',
   'properties.bootstrap.servers' = '{self.kafka_config.bootstrap_servers}',
   'properties.group.id' = '{self.kafka_config.consumer_group}',
+  'properties.auto.offset.reset' = '{self.kafka_config.auto_offset_reset}',
+  'properties.enable.auto.commit' = '{"true" if self.kafka_config.enable_auto_commit else "false"}',
   'scan.startup.mode' = '{self.kafka_config.startup_mode}',
   'format' = '{self.deserializer_config.format}',
   'json.fail-on-missing-field' = '{"true" if self.deserializer_config.fail_on_missing_field else "false"}',
