@@ -31,6 +31,7 @@ class PipelineState(str, Enum):
     REFETCHING = "REFETCHING"
     REPROCESSING = "REPROCESSING"
     VALIDATING = "VALIDATING"
+    RE_INGESTING = "RE_INGESTING"
     RESUMING = "RESUMING"
     RECOVERY_FAILED = "RECOVERY_FAILED"
     RECOVERED = "RECOVERED"
@@ -80,6 +81,12 @@ VALID_TRANSITIONS: Dict[PipelineState, Set[PipelineState]] = {
         PipelineState.CIRCUIT_OPEN,
     },
     PipelineState.VALIDATING: {
+        PipelineState.RE_INGESTING,
+        PipelineState.RESUMING,
+        PipelineState.RECOVERY_FAILED,
+        PipelineState.CIRCUIT_OPEN,
+    },
+    PipelineState.RE_INGESTING: {
         PipelineState.RESUMING,
         PipelineState.RECOVERY_FAILED,
         PipelineState.CIRCUIT_OPEN,

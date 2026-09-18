@@ -31,12 +31,15 @@ from remediation.state_manager import PipelineState, PipelineStateManager
 from remediation.alert_service import AlertService, MockAlertService, SlackAlertAdapter
 from remediation.source_adapter import LocalSourceAdapter, SourceAdapter
 from remediation.reprocessor import ReprocessResult, Reprocessor
+from remediation.lakehouse_sink import IcebergLakehouseSink, LakehouseSink, MockLakehouseSink, IngestionResult
 from remediation.flink_controller import FlinkController
 from remediation.metrics import (
     REMEDIATION_ATTEMPTS_TOTAL,
     REMEDIATION_DURATION_SECONDS,
     REMEDIATION_FAILURE_TOTAL,
     REMEDIATION_RECOVERED_EVENTS_TOTAL,
+    REMEDIATION_REINGESTED_EVENTS_TOTAL,
+    REMEDIATION_REINGEST_FAILURES_TOTAL,
     REMEDIATION_SUCCESS_TOTAL,
     record_state_metric,
 )
@@ -84,6 +87,7 @@ class RemediationController:
         quarantine_writer: Optional[QuarantineWriter] = None,
         storage: Optional[StorageBackend] = None,
         flink_controller: Optional[FlinkController] = None,
+        lakehouse_sink: Optional[LakehouseSink] = None,
         max_recovery_attempts: int = 3,
     ):
         self.pipeline_id = pipeline_id
@@ -99,6 +103,7 @@ class RemediationController:
         )
         self.quarantine_writer = quarantine_writer
         self.flink_controller = flink_controller or FlinkController()
+        self.lakehouse_sink = lakehouse_sink or IcebergLakehouseSink()
         self.max_recovery_attempts = max_recovery_attempts
 
         self._lock = threading.Lock()
@@ -369,10 +374,90 @@ class RemediationController:
             if reprocess_res.is_fully_valid and (
                 circuit_recovered or self.circuit_breaker.state == CircuitState.CLOSED
             ):
+                # 6.5 Stage: RE_INGESTING (Lakehouse re-ingestion to close self-healing loop)
+                self.state_manager.transition_to(
+                    to_state=PipelineState.RE_INGESTING,
+                    reason=f"Re-ingesting {reprocess_res.valid_count} validated events into Lakehouse",
+                    incident_id=incident_id,
+                    recovery_attempt=attempt_num,
+                )
+                record_state_metric(self.pipeline_id, "RE_INGESTING")
+
+                reingest_start = datetime.now(timezone.utc)
+                try:
+                    sink_res = self.lakehouse_sink.write_events(reprocess_res.valid_events)
+                except Exception as ex:
+                    sink_res = IngestionResult(
+                        records_written=0,
+                        success=False,
+                        error=str(ex),
+                    )
+
+                if not sink_res.success:
+                    err = f"Lakehouse re-ingestion failed: {sink_res.error}"
+                    logger.error(f"[RemediationController] {err}")
+
+                    self.state_manager.record_failure(
+                        error=err, incident_id=incident_id, recovery_attempt=attempt_num
+                    )
+                    record_state_metric(self.pipeline_id, "RECOVERY_FAILED")
+
+                    incident["status"] = "RECOVERY_FAILED"
+                    incident["last_error"] = err
+                    self.storage.create_incident(incident)
+
+                    self.storage.record_remediation_attempt(
+                        incident_id=incident_id,
+                        attempt_number=attempt_num,
+                        stage="RE_INGESTING",
+                        status="FAILED",
+                        started_at=reingest_start,
+                        completed_at=datetime.now(timezone.utc),
+                        error=err,
+                        source_reference=self.source_adapter.get_source_reference(),
+                        recovered_event_count=0,
+                    )
+
+                    REMEDIATION_REINGEST_FAILURES_TOTAL.labels(
+                        pipeline_id=self.pipeline_id,
+                        table=getattr(self.lakehouse_sink, "table_name", "lakehouse"),
+                    ).inc()
+                    REMEDIATION_FAILURE_TOTAL.labels(
+                        pipeline_id=self.pipeline_id, reason="lakehouse_reingestion_failed"
+                    ).inc()
+
+                    return RemediationResult(
+                        incident_id=incident_id,
+                        success=False,
+                        stage="RE_INGESTING",
+                        attempt=attempt_num,
+                        recovered_events=0,
+                        failed_events=reprocess_res.total_processed,
+                        error=err,
+                        started_at=start_ts,
+                        completed_at=datetime.now(timezone.utc).isoformat(),
+                    )
+
+                # Record successful re-ingestion attempt stage
+                self.storage.record_remediation_attempt(
+                    incident_id=incident_id,
+                    attempt_number=attempt_num,
+                    stage="RE_INGESTING",
+                    status="SUCCESS",
+                    started_at=reingest_start,
+                    completed_at=datetime.now(timezone.utc),
+                    source_reference=self.source_adapter.get_source_reference(),
+                    recovered_event_count=sink_res.records_written,
+                )
+                REMEDIATION_REINGESTED_EVENTS_TOTAL.labels(
+                    pipeline_id=self.pipeline_id,
+                    table=getattr(self.lakehouse_sink, "table_name", "lakehouse"),
+                ).inc(sink_res.records_written)
+
                 # 7. Stage: RESUMING -> RUNNING (Step 31)
                 self.state_manager.transition_to(
                     to_state=PipelineState.RESUMING,
-                    reason="Validation passed. Preparing pipeline resume.",
+                    reason="Validation passed and data re-ingested. Preparing pipeline resume.",
                     incident_id=incident_id,
                     recovery_attempt=attempt_num,
                 )

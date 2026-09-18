@@ -30,6 +30,18 @@ REMEDIATION_RECOVERED_EVENTS_TOTAL = Counter(
     labelnames=["pipeline_id"],
 )
 
+REMEDIATION_REINGESTED_EVENTS_TOTAL = Counter(
+    "icestream_remediation_reingested_events_total",
+    "Total number of remediated events successfully re-ingested into lakehouse",
+    labelnames=["pipeline_id", "table"],
+)
+
+REMEDIATION_REINGEST_FAILURES_TOTAL = Counter(
+    "icestream_remediation_reingest_failures_total",
+    "Total number of lakehouse re-ingestion failures",
+    labelnames=["pipeline_id", "table"],
+)
+
 REMEDIATION_DURATION_SECONDS = Histogram(
     "icestream_remediation_duration_seconds",
     "Duration of complete self-healing remediation workflow in seconds",
@@ -39,7 +51,7 @@ REMEDIATION_DURATION_SECONDS = Histogram(
 
 PIPELINE_STATE_GAUGE = Gauge(
     "icestream_pipeline_state",
-    "Numeric status of pipeline state (0=RUNNING, 1=DEGRADED, 2=QUARANTINING, 3=CIRCUIT_OPEN, 4=REMEDIATING, 5=REFETCHING, 6=REPROCESSING, 7=VALIDATING, 8=RESUMING, 9=RECOVERY_FAILED, 10=RECOVERED)",
+    "Numeric status of pipeline state (0=RUNNING, 1=DEGRADED, 2=QUARANTINING, 3=CIRCUIT_OPEN, 4=REMEDIATING, 5=REFETCHING, 6=REPROCESSING, 7=VALIDATING, 8=RE_INGESTING, 9=RESUMING, 10=RECOVERY_FAILED, 11=RECOVERED)",
     labelnames=["pipeline_id", "state"],
 )
 
@@ -52,9 +64,10 @@ STATE_NUMERIC_MAP = {
     "REFETCHING": 5,
     "REPROCESSING": 6,
     "VALIDATING": 7,
-    "RESUMING": 8,
-    "RECOVERY_FAILED": 9,
-    "RECOVERED": 10,
+    "RE_INGESTING": 8,
+    "RESUMING": 9,
+    "RECOVERY_FAILED": 10,
+    "RECOVERED": 11,
 }
 
 

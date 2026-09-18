@@ -89,9 +89,17 @@ def reprocessor(quality_engine, quarantine_writer):
     return Reprocessor(quality_engine=quality_engine, quarantine_writer=quarantine_writer)
 
 
+from remediation.lakehouse_sink import MockLakehouseSink
+
+
+@pytest.fixture
+def mock_lakehouse_sink():
+    return MockLakehouseSink()
+
+
 @pytest.fixture
 def controller(
-    memory_db, state_manager, circuit_breaker, mock_alert, source_adapter, reprocessor, quarantine_writer
+    memory_db, state_manager, circuit_breaker, mock_alert, source_adapter, reprocessor, quarantine_writer, mock_lakehouse_sink
 ):
     return RemediationController(
         pipeline_id="test_pipeline",
@@ -102,6 +110,7 @@ def controller(
         reprocessor=reprocessor,
         quarantine_writer=quarantine_writer,
         storage=memory_db,
+        lakehouse_sink=mock_lakehouse_sink,
         max_recovery_attempts=3,
     )
 
@@ -230,6 +239,7 @@ def test_10_pipeline_resume(controller, state_manager, circuit_breaker):
     assert "REFETCHING" in states_traversed
     assert "REPROCESSING" in states_traversed
     assert "VALIDATING" in states_traversed
+    assert "RE_INGESTING" in states_traversed
     assert "RESUMING" in states_traversed
     assert "RUNNING" in states_traversed
 
@@ -483,7 +493,11 @@ def test_end_to_end_self_healing_pipeline(
     assert updated_inc["status"] == "RECOVERED"
     assert updated_inc["resolved_at"] is not None
 
-    # 13. Verify original bad event remains in quarantine (NO DATA LOSS)
+    # 13. Verify event was persisted to lakehouse sink (CLOSED THE SELF-HEALING LOOP)
+    assert len(controller.lakehouse_sink.written_events) == 1
+    assert controller.lakehouse_sink.written_events[0]["event_id"] == "evt_recovery_demo_001"
+
+    # 14. Verify original bad event remains in quarantine (NO DATA LOSS)
     history = state_manager.get_history()
     assert len(history) > 0
     assert len(mock_alert.sent_alerts) == 1
