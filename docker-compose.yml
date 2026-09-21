@@ -83,6 +83,7 @@ services:
     restart: unless-stopped
     ports:
       - "8181:8181"
+    command: ["java", "-cp", "/usr/lib/iceberg-rest/iceberg-rest-image-all.jar:/usr/lib/iceberg-rest/lib/*", "org.apache.iceberg.rest.RESTCatalogServer"]
     environment:
       CATALOG_NAME: icestream
       CATALOG_WAREHOUSE: s3://warehouse/
@@ -91,13 +92,21 @@ services:
       CATALOG_S3_PATH__STYLE__ACCESS: "true"
       CATALOG_S3_ACCESS__KEY__ID: ${MINIO_ROOT_USER:-icestream_minio}
       CATALOG_S3_SECRET__ACCESS__KEY: ${MINIO_ROOT_PASSWORD:-icestream_minio_secret}
-      CATALOG_URI: "jdbc:sqlite:/tmp/iceberg_rest.db?busy_timeout=10000&journal_mode=WAL"
+      CATALOG_URI: ${ICEBERG_CATALOG_BACKEND_URI:-jdbc:postgresql://postgres:5432/iceberg_catalog}
+      CATALOG_JDBC_USER: ${POSTGRES_USER:-icestream_user}
+      CATALOG_JDBC_USERNAME: ${POSTGRES_USER:-icestream_user}
+      CATALOG_JDBC_PASSWORD: ${POSTGRES_PASSWORD:-change-me-postgres-secret}
       AWS_REGION: ${MINIO_REGION:-us-east-1}
       AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-icestream_minio}
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-icestream_minio_secret}
     depends_on:
       minio:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./docker/iceberg-rest/lib:/usr/lib/iceberg-rest/lib:ro
+      - icestream_iceberg_catalog_data:/var/lib/iceberg-rest/catalog
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8181' || exit 1"]
       interval: 10s
@@ -128,6 +137,7 @@ services:
       start_period: 10s
     volumes:
       - icestream_postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
     networks:
       - icestream-network
 
@@ -350,6 +360,8 @@ volumes:
     name: icestream_minio_data
   icestream_postgres_data:
     name: icestream_postgres_data
+  icestream_iceberg_catalog_data:
+    name: icestream_iceberg_catalog_data
   icestream_prometheus_data:
     name: icestream_prometheus_data
   icestream_grafana_data:
