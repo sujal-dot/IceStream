@@ -114,7 +114,7 @@ def main():
     # Initialize components
     storage = get_db_storage()
     state_mgr = PipelineStateManager(pipeline_id=args.pipeline_id, storage=storage)
-    breaker = CircuitBreaker()
+    breaker = CircuitBreaker(storage=storage, pipeline_id=args.pipeline_id)
     remediation_ctrl = RemediationController(
         pipeline_id=args.pipeline_id,
         state_manager=state_mgr,

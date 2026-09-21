@@ -118,6 +118,7 @@ class ErrorRateEngine:
         windows: Optional[List[int]] = None,
         clock: Optional[Clock] = None,
         persistence: Optional[MetricsPersistenceStore] = None,
+        flush_interval_events: int = 10,
     ) -> None:
         self._config = config or ErrorRateConfig()
         self._config.validate()
@@ -126,6 +127,9 @@ class ErrorRateEngine:
         self._lock = threading.Lock()
         self._last_health_state: Dict[int, HealthStatus] = {}
         self._history: List[Dict[str, Any]] = []
+        self._flush_interval_events = flush_interval_events
+        self._events_since_flush = 0
+        self._local_events_recorded = 0
 
         self._persistence = persistence or MetricsPersistenceStore()
 
@@ -154,6 +158,8 @@ class ErrorRateEngine:
                 agg.reset()
             self._last_health_state.clear()
             self._history.clear()
+            self._events_since_flush = 0
+            self._local_events_recorded = 0
 
     def record_event_outcome(
         self,
@@ -164,6 +170,27 @@ class ErrorRateEngine:
         with self._lock:
             for agg in self._window_aggregators.values():
                 agg.add_event(is_valid=is_valid, timestamp=timestamp)
+            self._events_since_flush += 1
+            self._local_events_recorded += 1
+            if self._events_since_flush >= self._flush_interval_events and self._persistence:
+                self._flush_event_counts_locked()
+
+    def _flush_event_counts_locked(self) -> None:
+        """Persist current window event counts to persistence store."""
+        if not self._persistence:
+            return
+        self._events_since_flush = 0
+        try:
+            for w_sec, agg in self._window_aggregators.items():
+                m = agg.get_metrics()
+                self._persistence.save_event_counts(w_sec, m.valid_events, m.invalid_events)
+        except Exception as e:
+            logger.debug("Failed to flush event counts: %s", e)
+
+    def flush_event_counts(self) -> None:
+        """Explicitly flush in-memory event counts to persistence store."""
+        with self._lock:
+            self._flush_event_counts_locked()
 
     def record_event(
         self,
@@ -219,6 +246,41 @@ class ErrorRateEngine:
         total_events = win_metrics.total_events
         valid_events = win_metrics.valid_events
         failed_events = win_metrics.invalid_events  # failed events
+
+        w_start = win_metrics.window_start
+        w_end = win_metrics.window_end
+
+        # Cross-process fallback: If this engine instance has recorded no local events (e.g. passive API process),
+        # local in-memory window has 0 events, and no historical ref_time was requested, hydrate from persistence.
+        if (
+            self._local_events_recorded == 0
+            and total_events == 0
+            and ref_time is None
+            and self._persistence
+            and hasattr(self._persistence, "db")
+            and self._persistence.db
+        ):
+            try:
+                persisted = self._persistence.db.get_window_event_counts(window_seconds)
+                if persisted and persisted.get("total_events", 0) > 0:
+                    updated_at_str = persisted.get("updated_at")
+                    is_fresh = True
+                    if updated_at_str:
+                        try:
+                            updated_at_dt = datetime.fromisoformat(updated_at_str.replace("Z", "+00:00"))
+                            now_dt = self._clock.now()
+                            if (now_dt - updated_at_dt).total_seconds() > window_seconds:
+                                is_fresh = False
+                        except Exception:
+                            pass
+                    if is_fresh:
+                        total_events = int(persisted.get("total_events", 0))
+                        valid_events = int(persisted.get("valid_events", 0))
+                        failed_events = int(persisted.get("failed_events", 0))
+                        if not w_end:
+                            w_end = str(persisted.get("updated_at", self._clock.now().isoformat()))
+            except Exception as e:
+                logger.debug("Could not fallback to persisted window event counts: %s", e)
 
         # Invariant checks
         if total_events < 0 or valid_events < 0 or failed_events < 0:

@@ -3,11 +3,13 @@
 from collections import deque
 from datetime import datetime, timezone
 from enum import Enum
+import json
 import logging
 import threading
+import time
 from typing import Any, Dict, List, Optional, Union
 
-from rules.clock import Clock, SystemClock
+from rules.clock import Clock, SystemClock, parse_iso_timestamp
 from circuit_breaker.config import CircuitBreakerConfig
 from circuit_breaker.state import (
     CircuitBreakerStatus,
@@ -46,11 +48,18 @@ class CircuitBreaker:
         self,
         config: Optional[CircuitBreakerConfig] = None,
         clock: Optional[Clock] = None,
+        storage: Optional[Any] = None,
+        pipeline_id: str = "icestream",
+        sync_interval_seconds: float = 0.5,
     ) -> None:
         self._config = config or CircuitBreakerConfig()
         self._config.validate()
         self._clock = clock or SystemClock()
         self._lock = threading.Lock()
+        self._storage = storage
+        self.pipeline_id = pipeline_id
+        self._sync_interval_seconds = sync_interval_seconds
+        self._last_sync_time = 0.0
 
         self._state: CircuitState = CircuitState.CLOSED
         self._opened_at_dt: Optional[datetime] = None
@@ -66,13 +75,16 @@ class CircuitBreaker:
         self._open_total_count: int = 0
         self._history: deque = deque(maxlen=self._config.max_history)
 
-        logger.info(
-            "[CIRCUIT BREAKER] Initialized: state=%s, enabled=%s, threshold=%.4f, recovery_timeout=%.1fs",
-            self._state.value,
-            self._config.enabled,
-            self._config.error_threshold,
-            self._config.recovery_timeout_seconds,
-        )
+        if self._storage is not None:
+            self._hydrate_from_storage()
+        else:
+            logger.info(
+                "[CIRCUIT BREAKER] Initialized (in-memory): state=%s, enabled=%s, threshold=%.4f, recovery_timeout=%.1fs",
+                self._state.value,
+                self._config.enabled,
+                self._config.error_threshold,
+                self._config.recovery_timeout_seconds,
+            )
 
     @property
     def config(self) -> CircuitBreakerConfig:
@@ -82,9 +94,104 @@ class CircuitBreaker:
     def clock(self) -> Clock:
         return self._clock
 
+    def _hydrate_from_storage(self) -> None:
+        """Hydrate state, counters, and history from centralized database storage."""
+        try:
+            db_state = self._storage.get_circuit_breaker_state(self.pipeline_id)
+            if db_state:
+                st_str = db_state.get("state", "CLOSED")
+                try:
+                    self._state = CircuitState(st_str)
+                except ValueError:
+                    self._state = CircuitState.CLOSED
+
+                op_at = db_state.get("opened_at")
+                if op_at:
+                    self._opened_at_dt = parse_iso_timestamp(op_at) if isinstance(op_at, str) else op_at
+                else:
+                    self._opened_at_dt = None
+
+                ch_at = db_state.get("last_state_change")
+                if ch_at:
+                    self._last_state_change_dt = parse_iso_timestamp(ch_at) if isinstance(ch_at, str) else ch_at
+
+                self._last_error_rate = float(db_state.get("last_error_rate", 0.0))
+                self._recovery_attempts = int(db_state.get("recovery_attempts", 0))
+                self._successful_recoveries = int(db_state.get("successful_recoveries", 0))
+                self._failed_recoveries = int(db_state.get("failed_recoveries", 0))
+                self._open_total_count = int(db_state.get("open_total_count", 0))
+
+            # Hydrate history
+            db_history = self._storage.get_circuit_breaker_history(self.pipeline_id, limit=self._config.max_history)
+            if db_history:
+                self._history.clear()
+                for rec in reversed(db_history):
+                    meta = {}
+                    if rec.get("metadata"):
+                        meta = json.loads(rec["metadata"]) if isinstance(rec["metadata"], str) else rec["metadata"]
+                    ts_val = rec.get("timestamp")
+                    ts_str = ts_val.isoformat() if isinstance(ts_val, datetime) else str(ts_val)
+                    self._history.append(
+                        StateTransition(
+                            from_state=rec.get("from_state", "CLOSED"),
+                            to_state=rec.get("to_state", "CLOSED"),
+                            timestamp=ts_str,
+                            reason=rec.get("reason", ""),
+                            error_rate=float(rec.get("error_rate", 0.0)),
+                            metadata=meta,
+                        )
+                    )
+            self._last_sync_time = time.time()
+            logger.info(
+                "[CIRCUIT BREAKER] Hydrated from storage for '%s': state=%s, opens=%d, recoveries=%d",
+                self.pipeline_id,
+                self._state.value,
+                self._open_total_count,
+                self._successful_recoveries,
+            )
+        except Exception as e:
+            logger.warning("Failed to hydrate circuit breaker from storage: %s", e)
+
+    def _sync_from_storage_locked(self) -> None:
+        """Synchronize authoritative state from storage if interval elapsed."""
+        if self._storage is None:
+            return
+        now = time.time()
+        if now - self._last_sync_time < self._sync_interval_seconds:
+            return
+        self._last_sync_time = now
+        try:
+            db_state = self._storage.get_circuit_breaker_state(self.pipeline_id)
+            if db_state:
+                st_str = db_state.get("state")
+                if st_str and st_str != self._state.value:
+                    try:
+                        self._state = CircuitState(st_str)
+                    except ValueError:
+                        pass
+                op_at = db_state.get("opened_at")
+                if op_at:
+                    self._opened_at_dt = parse_iso_timestamp(op_at) if isinstance(op_at, str) else op_at
+                elif self._state != CircuitState.OPEN:
+                    self._opened_at_dt = None
+                self._last_error_rate = float(db_state.get("last_error_rate", self._last_error_rate))
+                self._open_total_count = int(db_state.get("open_total_count", self._open_total_count))
+                self._recovery_attempts = int(db_state.get("recovery_attempts", self._recovery_attempts))
+                self._successful_recoveries = int(db_state.get("successful_recoveries", self._successful_recoveries))
+                self._failed_recoveries = int(db_state.get("failed_recoveries", self._failed_recoveries))
+        except Exception as e:
+            logger.debug("Failed to sync circuit breaker state from storage: %s", e)
+
+    def sync(self) -> None:
+        """Force immediate synchronization with centralized storage."""
+        with self._lock:
+            self._last_sync_time = 0.0
+            self._sync_from_storage_locked()
+
     def current_state(self) -> CircuitState:
         """Retrieve current circuit state, checking and executing timeout transitions if OPEN."""
         with self._lock:
+            self._sync_from_storage_locked()
             self._check_timeout_transition_locked()
             return self._state
 
@@ -113,6 +220,7 @@ class CircuitBreaker:
         with self._lock:
             if not self._config.enabled:
                 return True
+            self._sync_from_storage_locked()
             self._check_timeout_transition_locked()
             return self._state == CircuitState.CLOSED
 
@@ -121,6 +229,7 @@ class CircuitBreaker:
         with self._lock:
             if not self._config.enabled:
                 return False
+            self._sync_from_storage_locked()
             self._check_timeout_transition_locked()
             return self._state == CircuitState.HALF_OPEN and not self._probe_active
 
@@ -134,6 +243,7 @@ class CircuitBreaker:
             Current CircuitState after evaluation.
         """
         with self._lock:
+            self._sync_from_storage_locked()
             self._last_error_rate = error_rate
             if not self._config.enabled:
                 return CircuitState.CLOSED
@@ -233,6 +343,33 @@ class CircuitBreaker:
             rate_str,
         )
 
+        # Persist transition to central database storage if configured
+        if self._storage is not None:
+            try:
+                self._storage.upsert_circuit_breaker_state(
+                    pipeline_id=self.pipeline_id,
+                    state=new_state.value,
+                    opened_at=self._opened_at_dt,
+                    last_state_change=self._last_state_change_dt,
+                    last_error_rate=error_rate if error_rate is not None else self._last_error_rate,
+                    recovery_attempts=self._recovery_attempts,
+                    successful_recoveries=self._successful_recoveries,
+                    failed_recoveries=self._failed_recoveries,
+                    open_total_count=self._open_total_count,
+                    updated_at=now_dt,
+                )
+                self._storage.record_circuit_breaker_history(
+                    pipeline_id=self.pipeline_id,
+                    from_state=old_state.value,
+                    to_state=new_state.value,
+                    timestamp=now_dt,
+                    reason=reason,
+                    error_rate=error_rate if error_rate is not None else self._last_error_rate,
+                    metadata=metadata or {},
+                )
+            except Exception as e:
+                logger.error("Failed to persist circuit breaker transition to storage: %s", e)
+
     def begin_recovery_probe(self) -> bool:
         """Attempt to initiate a single concurrent recovery probe in HALF_OPEN state.
         
@@ -243,6 +380,7 @@ class CircuitBreaker:
             if not self._config.enabled:
                 return False
 
+            self._sync_from_storage_locked()
             self._check_timeout_transition_locked()
 
             if self._state != CircuitState.HALF_OPEN:
@@ -259,6 +397,22 @@ class CircuitBreaker:
             self._probe_active = True
             self._recovery_attempts += 1
             logger.info("[CIRCUIT BREAKER] Recovery probe permitted (attempt #%d)", self._recovery_attempts)
+            if self._storage is not None:
+                try:
+                    self._storage.upsert_circuit_breaker_state(
+                        pipeline_id=self.pipeline_id,
+                        state=self._state.value,
+                        opened_at=self._opened_at_dt,
+                        last_state_change=self._last_state_change_dt,
+                        last_error_rate=self._last_error_rate,
+                        recovery_attempts=self._recovery_attempts,
+                        successful_recoveries=self._successful_recoveries,
+                        failed_recoveries=self._failed_recoveries,
+                        open_total_count=self._open_total_count,
+                        updated_at=self._clock.now(),
+                    )
+                except Exception as e:
+                    logger.debug("Failed to persist recovery probe attempt to storage: %s", e)
             return True
 
     def begin_recovery(self) -> bool:

@@ -56,10 +56,11 @@ def set_error_rate_engine(engine: Optional[ErrorRateEngine]) -> None:
 
 
 def get_circuit_breaker() -> CircuitBreaker:
-    """Retrieve or initialize the global shared CircuitBreaker instance."""
+    """Retrieve or initialize global CircuitBreaker."""
     global _global_circuit_breaker
     if _global_circuit_breaker is None:
-        _global_circuit_breaker = CircuitBreaker()
+        storage = get_db_storage()
+        _global_circuit_breaker = CircuitBreaker(storage=storage, pipeline_id="icestream")
     return _global_circuit_breaker
 
 
@@ -73,7 +74,8 @@ def get_state_manager() -> PipelineStateManager:
     """Retrieve or initialize global PipelineStateManager."""
     global _global_state_manager
     if _global_state_manager is None:
-        _global_state_manager = PipelineStateManager(pipeline_id="icestream")
+        storage = get_db_storage()
+        _global_state_manager = PipelineStateManager(pipeline_id="icestream", storage=storage)
     return _global_state_manager
 
 

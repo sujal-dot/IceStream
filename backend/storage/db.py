@@ -165,6 +165,32 @@ class StorageBackend:
                 updated_at TIMESTAMP NOT NULL
             );
             """,
+            """
+            CREATE TABLE IF NOT EXISTS circuit_breaker_state (
+                pipeline_id VARCHAR(64) PRIMARY KEY,
+                state VARCHAR(64) NOT NULL DEFAULT 'CLOSED',
+                opened_at TIMESTAMP,
+                last_state_change TIMESTAMP NOT NULL,
+                last_error_rate REAL NOT NULL DEFAULT 0.0,
+                recovery_attempts INT NOT NULL DEFAULT 0,
+                successful_recoveries INT NOT NULL DEFAULT 0,
+                failed_recoveries INT NOT NULL DEFAULT 0,
+                open_total_count INT NOT NULL DEFAULT 0,
+                updated_at TIMESTAMP NOT NULL
+            );
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS circuit_breaker_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT if_sqlite,
+                pipeline_id VARCHAR(64) NOT NULL,
+                from_state VARCHAR(64) NOT NULL,
+                to_state VARCHAR(64) NOT NULL,
+                timestamp TIMESTAMP NOT NULL,
+                reason TEXT,
+                error_rate REAL DEFAULT 0.0,
+                metadata TEXT
+            );
+            """,
         ]
 
         # Columns to ensure exist for backwards compatibility with existing DB tables
@@ -1058,6 +1084,235 @@ class StorageBackend:
             if not row:
                 return None
             return dict(row)
+
+    # --- Circuit Breaker Centralized State Methods ---
+
+    def upsert_circuit_breaker_state(
+        self,
+        pipeline_id: str,
+        state: str,
+        opened_at: Optional[Any] = None,
+        last_state_change: Optional[Any] = None,
+        last_error_rate: float = 0.0,
+        recovery_attempts: int = 0,
+        successful_recoveries: int = 0,
+        failed_recoveries: int = 0,
+        open_total_count: int = 0,
+        updated_at: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """Upsert authoritative circuit breaker state into database."""
+        now_ts = updated_at or datetime.now(timezone.utc)
+        now_iso = now_ts.isoformat() if isinstance(now_ts, datetime) else str(now_ts)
+        opened_at_str = opened_at.isoformat() if isinstance(opened_at, datetime) else (str(opened_at) if opened_at else None)
+        last_change_str = last_state_change.isoformat() if isinstance(last_state_change, datetime) else str(last_state_change or now_iso)
+
+        if self.use_sqlite:
+            lock = getattr(self, "_sqlite_lock", None)
+            if lock:
+                with lock:
+                    conn = self._get_connection()
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        """
+                        INSERT INTO circuit_breaker_state (
+                            pipeline_id, state, opened_at, last_state_change, last_error_rate,
+                            recovery_attempts, successful_recoveries, failed_recoveries,
+                            open_total_count, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(pipeline_id) DO UPDATE SET
+                            state=excluded.state,
+                            opened_at=excluded.opened_at,
+                            last_state_change=excluded.last_state_change,
+                            last_error_rate=excluded.last_error_rate,
+                            recovery_attempts=excluded.recovery_attempts,
+                            successful_recoveries=excluded.successful_recoveries,
+                            failed_recoveries=excluded.failed_recoveries,
+                            open_total_count=excluded.open_total_count,
+                            updated_at=excluded.updated_at;
+                        """,
+                        (
+                            pipeline_id, state, opened_at_str, last_change_str, float(last_error_rate),
+                            int(recovery_attempts), int(successful_recoveries), int(failed_recoveries),
+                            int(open_total_count), now_iso,
+                        ),
+                    )
+                    conn.commit()
+            else:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    INSERT INTO circuit_breaker_state (
+                        pipeline_id, state, opened_at, last_state_change, last_error_rate,
+                        recovery_attempts, successful_recoveries, failed_recoveries,
+                        open_total_count, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(pipeline_id) DO UPDATE SET
+                        state=excluded.state,
+                        opened_at=excluded.opened_at,
+                        last_state_change=excluded.last_state_change,
+                        last_error_rate=excluded.last_error_rate,
+                        recovery_attempts=excluded.recovery_attempts,
+                        successful_recoveries=excluded.successful_recoveries,
+                        failed_recoveries=excluded.failed_recoveries,
+                        open_total_count=excluded.open_total_count,
+                        updated_at=excluded.updated_at;
+                    """,
+                    (
+                        pipeline_id, state, opened_at_str, last_change_str, float(last_error_rate),
+                        int(recovery_attempts), int(successful_recoveries), int(failed_recoveries),
+                        int(open_total_count), now_iso,
+                    ),
+                )
+                conn.commit()
+        else:
+            conn = self._get_connection()
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO circuit_breaker_state (
+                        pipeline_id, state, opened_at, last_state_change, last_error_rate,
+                        recovery_attempts, successful_recoveries, failed_recoveries,
+                        open_total_count, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT(pipeline_id) DO UPDATE SET
+                        state=EXCLUDED.state,
+                        opened_at=EXCLUDED.opened_at,
+                        last_state_change=EXCLUDED.last_state_change,
+                        last_error_rate=EXCLUDED.last_error_rate,
+                        recovery_attempts=EXCLUDED.recovery_attempts,
+                        successful_recoveries=EXCLUDED.successful_recoveries,
+                        failed_recoveries=EXCLUDED.failed_recoveries,
+                        open_total_count=EXCLUDED.open_total_count,
+                        updated_at=EXCLUDED.updated_at;
+                    """,
+                    (
+                        pipeline_id, state, opened_at if isinstance(opened_at, datetime) else opened_at_str,
+                        last_state_change if isinstance(last_state_change, datetime) else last_change_str,
+                        float(last_error_rate), int(recovery_attempts), int(successful_recoveries),
+                        int(failed_recoveries), int(open_total_count), now_ts,
+                    ),
+                )
+            conn.commit()
+            conn.close()
+
+        return {
+            "pipeline_id": pipeline_id,
+            "state": state,
+            "opened_at": opened_at_str,
+            "last_state_change": last_change_str,
+            "last_error_rate": float(last_error_rate),
+            "recovery_attempts": int(recovery_attempts),
+            "successful_recoveries": int(successful_recoveries),
+            "failed_recoveries": int(failed_recoveries),
+            "open_total_count": int(open_total_count),
+            "updated_at": now_iso,
+        }
+
+    def get_circuit_breaker_state(self, pipeline_id: str = "icestream") -> Optional[Dict[str, Any]]:
+        """Fetch current circuit breaker state record."""
+        if self.use_sqlite:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM circuit_breaker_state WHERE pipeline_id = ?", (pipeline_id,)
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return dict(row)
+        else:
+            conn = self._get_connection()
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT * FROM circuit_breaker_state WHERE pipeline_id = %s", (pipeline_id,)
+                )
+                row = cursor.fetchone()
+            conn.close()
+            if not row:
+                return None
+            return dict(row)
+
+    def record_circuit_breaker_history(
+        self,
+        pipeline_id: str,
+        from_state: str,
+        to_state: str,
+        timestamp: Optional[Any] = None,
+        reason: Optional[str] = None,
+        error_rate: float = 0.0,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Insert state transition audit entry into circuit_breaker_history."""
+        import json
+        ts = timestamp or datetime.now(timezone.utc)
+        ts_val = ts.isoformat() if isinstance(ts, datetime) else str(ts)
+        meta_str = json.dumps(metadata or {})
+
+        if self.use_sqlite:
+            lock = getattr(self, "_sqlite_lock", None)
+            if lock:
+                with lock:
+                    conn = self._get_connection()
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        """
+                        INSERT INTO circuit_breaker_history (
+                            pipeline_id, from_state, to_state, timestamp, reason, error_rate, metadata
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (pipeline_id, from_state, to_state, ts_val, reason, float(error_rate), meta_str),
+                    )
+                    conn.commit()
+            else:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    INSERT INTO circuit_breaker_history (
+                        pipeline_id, from_state, to_state, timestamp, reason, error_rate, metadata
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (pipeline_id, from_state, to_state, ts_val, reason, float(error_rate), meta_str),
+                )
+                conn.commit()
+        else:
+            conn = self._get_connection()
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO circuit_breaker_history (
+                        pipeline_id, from_state, to_state, timestamp, reason, error_rate, metadata
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (pipeline_id, from_state, to_state, ts if isinstance(ts, datetime) else ts_val, reason, float(error_rate), meta_str),
+                )
+            conn.commit()
+            conn.close()
+
+    def get_circuit_breaker_history(
+        self, pipeline_id: str = "icestream", limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """Retrieve recent circuit breaker state transitions."""
+        if self.use_sqlite:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM circuit_breaker_history WHERE pipeline_id = ? ORDER BY id DESC LIMIT ?",
+                (pipeline_id, limit),
+            )
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
+        else:
+            conn = self._get_connection()
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT * FROM circuit_breaker_history WHERE pipeline_id = %s ORDER BY id DESC LIMIT %s",
+                    (pipeline_id, limit),
+                )
+                rows = cursor.fetchall()
+            conn.close()
+            return [dict(r) for r in rows]
 
 
 
