@@ -24,6 +24,8 @@ RULE_ERROR_CODE_MAP: Dict[str, str] = {
     "future_timestamp": "FUTURE_TIMESTAMP",
     "late_event": "LATE_EVENT",
     "schema_drift": "SCHEMA_DRIFT",
+    "malformed_json": "MALFORMED_JSON",
+    "syntax_error": "MALFORMED_JSON",
 }
 
 SEVERITY_WEIGHTS: Dict[Severity, int] = {

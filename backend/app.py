@@ -124,10 +124,7 @@ def _start_kafka_telemetry_listener() -> None:
     def _telemetry_consumer_loop():
         try:
             from confluent_kafka import Consumer, KafkaError
-            import json
-            from rules.engine import QualityEngine
-            from rules.registry import create_default_registry
-            from rules.base import EventStatus
+            from streaming.stream_validator import StreamQualityValidator
 
             bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "127.0.0.1:9092")
             consumer = Consumer({
@@ -137,31 +134,18 @@ def _start_kafka_telemetry_listener() -> None:
                 "enable.auto.commit": True,
             })
             consumer.subscribe(["checkout-events"])
-            quality_engine = QualityEngine(registry=create_default_registry())
+
+            validator = StreamQualityValidator(
+                error_rate_engine=get_error_rate_engine(),
+                circuit_breaker=get_circuit_breaker(),
+                state_manager=get_state_manager(),
+                remediation_controller=get_remediation_controller(),
+                pipeline_id="icestream",
+                auto_quarantine=True,
+                auto_trip_circuit=True,
+            )
             logger.info("Kafka telemetry consumer started on topic 'checkout-events' at %s", bootstrap_servers)
-
-            while True:
-                msg = consumer.poll(timeout=1.0)
-                if msg is None:
-                    continue
-                if msg.error():
-                    if msg.error().code() != KafkaError._PARTITION_EOF:
-                        logger.warning("Kafka telemetry consumer error: %s", msg.error())
-                    continue
-
-                engine = get_error_rate_engine()
-                try:
-                    payload = json.loads(msg.value().decode("utf-8"))
-                    is_faulty = payload.get("is_corrupted", False) or payload.get("_icestream_fault", False)
-                    amt = payload.get("amount")
-                    curr = payload.get("currency")
-                    cust = payload.get("customer_id")
-                    if amt is None or (isinstance(amt, (int, float)) and amt <= 0) or not cust or curr == "INVALID":
-                        is_faulty = True
-
-                    engine.record_event_outcome(is_valid=not is_faulty)
-                except Exception:
-                    engine.record_event_outcome(is_valid=False)
+            validator.consume_stream(consumer)
         except Exception as e:
             logger.warning("Kafka telemetry background consumer stopped: %s", e)
 
