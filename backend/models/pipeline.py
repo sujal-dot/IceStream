@@ -16,6 +16,18 @@ class PipelineStatusResponse(BaseModel):
     stage: Optional[str] = None
     last_error: Optional[str] = None
     updated_at: Optional[str] = None
+    flink_job_id: Optional[str] = None
+    flink_job_state: Optional[str] = None
+    latest_checkpoint_path: Optional[str] = None
+    checkpoints_completed: Optional[int] = None
+
+
+class FlinkTelemetryResponse(BaseModel):
+    """Flink cluster, job, and checkpoint telemetry response model."""
+
+    cluster: dict
+    active_job: dict
+    retrieved_at: str
 
 
 class PipelineControlRequest(BaseModel):

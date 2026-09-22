@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 from fastapi import HTTPException, status
 
 from backend.models.pipeline import (
+    FlinkTelemetryResponse,
     PipelineControlResponse,
     PipelineStatusResponse,
     RecoveryResponse,
@@ -17,13 +18,24 @@ logger = logging.getLogger("icestream.services.pipeline")
 class PipelineService:
     """Service layer for pipeline state control operations."""
 
-    def __init__(self, state_manager=None, circuit_breaker=None, remediation_controller=None):
+    def __init__(
+        self,
+        state_manager=None,
+        circuit_breaker=None,
+        remediation_controller=None,
+        flink_controller=None,
+    ):
         self.state_manager = state_manager
         self.circuit_breaker = circuit_breaker
         self.remediation_controller = remediation_controller
+        self.flink_controller = flink_controller or (
+            getattr(remediation_controller, "flink_controller", None)
+            if remediation_controller
+            else None
+        )
 
     def get_status(self) -> PipelineStatusResponse:
-        """Return authoritative backend pipeline state."""
+        """Return authoritative backend pipeline state enriched with Flink streaming telemetry."""
         if not self.state_manager:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -32,6 +44,27 @@ class PipelineService:
 
         st = self.state_manager.get_state()
         state_str = str(st.get("state", "RUNNING"))
+
+        flink_job_id = None
+        flink_job_state = None
+        latest_chk_path = None
+        chk_completed = None
+
+        if self.flink_controller:
+            try:
+                active_id = self.flink_controller.get_active_job_id()
+                if active_id:
+                    flink_job_id = active_id
+                    flink_job_state = self.flink_controller.get_job_status(active_id)
+                    chk_metrics = self.flink_controller.get_checkpoint_metrics(active_id)
+                    if chk_metrics and chk_metrics.get("available"):
+                        latest_chk = chk_metrics.get("latest_checkpoint")
+                        if latest_chk:
+                            latest_chk_path = latest_chk.get("external_path")
+                        chk_completed = chk_metrics.get("counts", {}).get("completed")
+            except Exception as e:
+                logger.debug("Failed to retrieve Flink status for get_status: %s", e)
+
         return PipelineStatusResponse(
             pipeline_id=str(st.get("pipeline_id", "icestream")),
             state=state_str,
@@ -42,6 +75,24 @@ class PipelineService:
             stage=state_str,
             last_error=st.get("last_error"),
             updated_at=str(st.get("updated_at")),
+            flink_job_id=flink_job_id,
+            flink_job_state=flink_job_state,
+            latest_checkpoint_path=latest_chk_path,
+            checkpoints_completed=chk_completed,
+        )
+
+    def get_flink_telemetry(self) -> FlinkTelemetryResponse:
+        """Return real-time Flink cluster, job, and checkpoint telemetry."""
+        if not self.flink_controller:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="FlinkController is unavailable",
+            )
+        summary = self.flink_controller.get_telemetry_summary()
+        return FlinkTelemetryResponse(
+            cluster=summary.get("cluster", {}),
+            active_job=summary.get("active_job", {}),
+            retrieved_at=datetime.now(timezone.utc).isoformat(),
         )
 
     def pause(self, reason: Optional[str] = None) -> PipelineControlResponse:

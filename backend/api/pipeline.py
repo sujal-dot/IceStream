@@ -4,6 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, Body, Depends
 
 from backend.models.pipeline import (
+    FlinkTelemetryResponse,
     PipelineControlRequest,
     PipelineControlResponse,
     PipelineStatusResponse,
@@ -19,6 +20,7 @@ router = APIRouter(prefix="/pipeline", tags=["Pipeline"])
 def get_pipeline_service() -> PipelineService:
     from backend.app import (
         get_circuit_breaker,
+        get_flink_controller,
         get_remediation_controller,
         get_state_manager,
     )
@@ -26,6 +28,7 @@ def get_pipeline_service() -> PipelineService:
         state_manager=get_state_manager(),
         circuit_breaker=get_circuit_breaker(),
         remediation_controller=get_remediation_controller(),
+        flink_controller=get_flink_controller(),
     )
 
 
@@ -84,3 +87,15 @@ def recover_pipeline(
     inc_id = payload.incident_id if payload else None
     ctx = payload.context if payload else None
     return service.recover(incident_id=inc_id, context=ctx)
+
+
+@router.get(
+    "/flink",
+    response_model=FlinkTelemetryResponse,
+    summary="Get Flink Cluster & Checkpoint Telemetry",
+    description="Returns real-time Flink cluster capacity, running jobs, checkpoint history, and exception metrics.",
+)
+def get_flink_telemetry() -> FlinkTelemetryResponse:
+    service = get_pipeline_service()
+    return service.get_flink_telemetry()
+

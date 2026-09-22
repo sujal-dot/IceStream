@@ -3,6 +3,7 @@
 Provides persistent storage in PostgreSQL with in-memory SQLite fallback for unit testing.
 """
 
+import contextlib
 from datetime import datetime, timezone
 import logging
 import os
@@ -13,12 +14,80 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger("icestream.storage.db")
 
 
+class PooledConnectionWrapper:
+    """Proxy around a borrowed psycopg2 connection that returns to pool on close()."""
+
+    def __init__(self, pool: Any, conn: Any) -> None:
+        self._pool = pool
+        self._conn = conn
+        self._returned = False
+
+    def close(self) -> None:
+        """Return the physical connection to the pool instead of terminating the socket."""
+        if not self._returned and self._pool is not None and self._conn is not None:
+            self._returned = True
+            try:
+                # Rollback uncommitted transaction so connection is returned in clean state
+                if not self._conn.closed and hasattr(self._conn, "status"):
+                    from psycopg2.extensions import STATUS_IN_TRANSACTION
+                    if self._conn.status == STATUS_IN_TRANSACTION:
+                        self._conn.rollback()
+            except Exception:
+                pass
+            try:
+                if self._conn.closed:
+                    self._pool.putconn(self._conn, close=True)
+                else:
+                    self._pool.putconn(self._conn)
+            except Exception as e:
+                logger.warning(f"Failed to return connection to pool: {e}")
+
+    def __getattr__(self, item: str) -> Any:
+        return getattr(self._conn, item)
+
+    def __enter__(self) -> "PooledConnectionWrapper":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()
+
+
+def _load_env_if_needed() -> None:
+    """Load configuration from .env file if key environment variables are missing."""
+    if not os.getenv("POSTGRES_PASSWORD") or not os.getenv("DATABASE_URL"):
+        candidates = [
+            os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".env")),
+            os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env")),
+            os.path.abspath(".env"),
+        ]
+        for path in candidates:
+            if os.path.exists(path):
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if line and not line.startswith("#") and "=" in line:
+                                k, v = line.split("=", 1)
+                                k = k.strip()
+                                v = v.strip().strip("'\"")
+                                if k not in os.environ:
+                                    os.environ[k] = v
+                    break
+                except Exception:
+                    pass
+
+
 class StorageBackend:
     """Interface for DB operations supporting PostgreSQL or SQLite fallback."""
 
-    def __init__(self, db_uri: Optional[str] = None, use_sqlite: bool = False):
-        self.use_sqlite = use_sqlite
+    def __init__(self, db_uri: Optional[str] = None, use_sqlite: Optional[bool] = None):
+        _load_env_if_needed()
+        if use_sqlite is None:
+            self.use_sqlite = (os.getenv("TESTING", "").lower() in ("true", "1"))
+        else:
+            self.use_sqlite = use_sqlite
         self._sqlite_conn: Optional[sqlite3.Connection] = None
+        self._pg_pool = None
 
         env_db_url = os.getenv("DATABASE_URL")
         if db_uri:
@@ -47,30 +116,127 @@ class StorageBackend:
             logger.info(f"StorageBackend initialized with SQLite database at '{db_path}'")
         else:
             logger.info(f"StorageBackend initialized with PostgreSQL at {self.db_uri.split('@')[-1] if '@' in self.db_uri else 'configured target'}")
+            self._init_pool()
 
         self._init_tables()
+
+    def _init_pool(self) -> None:
+        """Initialize PostgreSQL ThreadedConnectionPool."""
+        if self.use_sqlite:
+            self._pg_pool = None
+            return
+
+        import psycopg2
+        import psycopg2.pool
+        import psycopg2.extras
+
+        host = os.getenv("POSTGRES_HOST", "127.0.0.1")
+        port = int(os.getenv("POSTGRES_PORT", "5433"))
+        dbname = os.getenv("POSTGRES_DB", "icestream_db")
+        user = os.getenv("POSTGRES_USER", "icestream_user")
+        password = os.getenv("POSTGRES_PASSWORD")
+        if not password:
+            raise ValueError("POSTGRES_PASSWORD environment variable is required for PostgreSQL connection.")
+
+        minconn = int(os.getenv("POSTGRES_MIN_CONNECTIONS", "1"))
+        maxconn = int(os.getenv("POSTGRES_MAX_CONNECTIONS", "20"))
+
+        self._pg_pool = psycopg2.pool.ThreadedConnectionPool(
+            minconn=minconn,
+            maxconn=maxconn,
+            host=host,
+            port=port,
+            dbname=dbname,
+            user=user,
+            password=password,
+            cursor_factory=psycopg2.extras.DictCursor,
+        )
+        logger.info(
+            f"StorageBackend initialized ThreadedConnectionPool (min={minconn}, max={maxconn}) "
+            f"for {user}@{host}:{port}/{dbname}"
+        )
 
     def _get_connection(self):
         if self.use_sqlite:
             return self._sqlite_conn
         else:
-            import psycopg2
-            import psycopg2.extras
-            host = os.getenv("POSTGRES_HOST", "127.0.0.1")
-            port = int(os.getenv("POSTGRES_PORT", "5433"))
-            dbname = os.getenv("POSTGRES_DB", "icestream_db")
-            user = os.getenv("POSTGRES_USER", "icestream_user")
-            password = os.getenv("POSTGRES_PASSWORD")
-            if not password:
-                raise ValueError("POSTGRES_PASSWORD environment variable is required for PostgreSQL connection.")
-            return psycopg2.connect(
-                host=host,
-                port=port,
-                dbname=dbname,
-                user=user,
-                password=password,
-                cursor_factory=psycopg2.extras.DictCursor,
-            )
+            if not hasattr(self, "_pg_pool") or self._pg_pool is None:
+                self._init_pool()
+
+            conn = None
+            for attempt in range(3):
+                try:
+                    conn = self._pg_pool.getconn()
+                    # Check connection liveness
+                    if conn.closed:
+                        self._pg_pool.putconn(conn, close=True)
+                        continue
+                    # Quick liveness ping
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT 1;")
+                    break
+                except Exception as e:
+                    if conn:
+                        try:
+                            self._pg_pool.putconn(conn, close=True)
+                        except Exception:
+                            pass
+                    if attempt == 2:
+                        raise e
+            return PooledConnectionWrapper(self._pg_pool, conn)
+
+    @contextlib.contextmanager
+    def connection(self):
+        """Thread-safe context manager for acquiring a database connection."""
+        if self.use_sqlite:
+            with self._sqlite_lock:
+                yield self._sqlite_conn
+        else:
+            conn = self._get_connection()
+            try:
+                yield conn
+            finally:
+                conn.close()
+
+    def close(self) -> None:
+        """Close connection pool and release resources."""
+        if hasattr(self, "_pg_pool") and self._pg_pool is not None:
+            try:
+                self._pg_pool.closeall()
+                self._pg_pool = None
+                logger.info("Closed PostgreSQL ThreadedConnectionPool")
+            except Exception as e:
+                logger.warning(f"Error closing PostgreSQL connection pool: {e}")
+        if self.use_sqlite and self._sqlite_conn is not None:
+            try:
+                self._sqlite_conn.close()
+                self._sqlite_conn = None
+                logger.info("Closed SQLite database connection")
+            except Exception as e:
+                logger.warning(f"Error closing SQLite connection: {e}")
+
+    def get_pool_status(self) -> Dict[str, Any]:
+        """Return status metrics for database connection pool."""
+        if self.use_sqlite:
+            return {
+                "backend": "sqlite",
+                "pooled": False,
+                "is_active": self._sqlite_conn is not None,
+            }
+        pool = getattr(self, "_pg_pool", None)
+        if not pool:
+            return {
+                "backend": "postgresql",
+                "pooled": False,
+                "is_active": False,
+            }
+        return {
+            "backend": "postgresql",
+            "pooled": True,
+            "min_connections": pool.minconn,
+            "max_connections": pool.maxconn,
+            "is_closed": pool.closed,
+        }
 
     def _init_tables(self):
         """Create tables if they do not exist."""
@@ -1320,9 +1486,11 @@ class StorageBackend:
 _global_db_storage: Optional[StorageBackend] = None
 
 
-def get_db_storage(use_sqlite: bool = False) -> StorageBackend:
+def get_db_storage(use_sqlite: Optional[bool] = None) -> StorageBackend:
     global _global_db_storage
     if _global_db_storage is None:
+        if use_sqlite is None:
+            use_sqlite = (os.getenv("TESTING", "").lower() in ("true", "1"))
         _global_db_storage = StorageBackend(use_sqlite=use_sqlite)
     return _global_db_storage
 

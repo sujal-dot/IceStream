@@ -15,6 +15,31 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger("icestream.remediation.flink_controller")
 
 
+def _load_env_if_needed() -> None:
+    """Load configuration from .env file if key environment variables are missing."""
+    if not os.getenv("MINIO_ROOT_PASSWORD") or not os.getenv("FLINK_REST_URI"):
+        candidates = [
+            os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".env")),
+            os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env")),
+            os.path.abspath(".env"),
+        ]
+        for path in candidates:
+            if os.path.exists(path):
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if line and not line.startswith("#") and "=" in line:
+                                k, v = line.split("=", 1)
+                                k = k.strip()
+                                v = v.strip().strip("'\"")
+                                if k not in os.environ:
+                                    os.environ[k] = v
+                    break
+                except Exception:
+                    pass
+
+
 class FlinkController:
     """Controller interfacing with Apache Flink JobManager REST API and container runtime."""
 
@@ -24,6 +49,7 @@ class FlinkController:
         jobmanager_container: str = "icestream-flink-jobmanager",
         savepoints_dir: Optional[str] = None,
     ) -> None:
+        _load_env_if_needed()
         env_url = os.getenv("FLINK_REST_URI") or os.getenv("FLINK_URL")
         if not env_url:
             host = os.getenv("FLINK_JOBMANAGER_HOST", "localhost")
@@ -36,22 +62,60 @@ class FlinkController:
         )
         self._last_savepoint_path: Optional[str] = None
 
+    def _rest_request(
+        self,
+        method: str,
+        path: str,
+        payload: Optional[Dict[str, Any]] = None,
+        timeout: float = 5.0,
+    ) -> Optional[Dict[str, Any]]:
+        """Perform HTTP request against Flink REST API with JSON serialization and error handling."""
+        try:
+            clean_path = path if path.startswith("/") else f"/{path}"
+            url = f"{self.flink_url.rstrip('/')}{clean_path}"
+            data = json.dumps(payload).encode("utf-8") if payload is not None else None
+            req = urllib.request.Request(
+                url,
+                data=data,
+                method=method,
+                headers={"Accept": "application/json", "Content-Type": "application/json"}
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                if resp.status in (200, 201, 202):
+                    body = resp.read().decode("utf-8")
+                    return json.loads(body) if body else {}
+        except Exception as e:
+            logger.debug("Flink REST %s %s failed: %s", method, path, e)
+        return None
+
+    def get_cluster_overview(self) -> Dict[str, Any]:
+        """Query Flink JobManager for high-level cluster capacity, slots, and status."""
+        overview = self._rest_request("GET", "/overview") or {}
+        config = self._rest_request("GET", "/config") or {}
+        return {
+            "taskmanagers": overview.get("taskmanagers", 0),
+            "slots_total": overview.get("slots-total", 0),
+            "slots_available": overview.get("slots-available", 0),
+            "jobs_running": overview.get("jobs-running", 0),
+            "jobs_finished": overview.get("jobs-finished", 0),
+            "jobs_cancelled": overview.get("jobs-cancelled", 0),
+            "jobs_failed": overview.get("jobs-failed", 0),
+            "flink_version": overview.get("flink-version") or config.get("flink-version", "unknown"),
+        }
+
     def get_active_job_id(self) -> Optional[str]:
         """Discover running IceStream Flink job ID from JobManager REST API."""
         try:
-            url = f"{self.flink_url}/jobs/overview"
-            req = urllib.request.Request(url, headers={"Accept": "application/json"})
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                if resp.status == 200:
-                    data = json.loads(resp.read().decode("utf-8"))
-                    jobs = data.get("jobs", [])
-                    active_jobs = [
-                        j for j in jobs
-                        if j.get("state") in ("RUNNING", "INITIALIZING", "CREATED")
-                        and ("checkout_events" in j.get("name", "") or "icestream" in j.get("name", "") or "insert-into" in j.get("name", ""))
-                    ]
-                    if active_jobs:
-                        return str(active_jobs[0]["jid"])
+            data = self._rest_request("GET", "/jobs/overview")
+            if data:
+                jobs = data.get("jobs", [])
+                active_jobs = [
+                    j for j in jobs
+                    if j.get("state") in ("RUNNING", "INITIALIZING", "CREATED", "RESTARTING")
+                    and ("checkout_events" in j.get("name", "") or "icestream" in j.get("name", "") or "insert-into" in j.get("name", ""))
+                ]
+                if active_jobs:
+                    return str(active_jobs[0]["jid"])
         except Exception as e:
             logger.warning("Failed to query Flink active jobs: %s", e)
         return None
@@ -59,15 +123,163 @@ class FlinkController:
     def get_job_status(self, job_id: str) -> Optional[str]:
         """Query state of a specific Flink job ID."""
         try:
-            url = f"{self.flink_url}/jobs/{job_id}"
-            req = urllib.request.Request(url, headers={"Accept": "application/json"})
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                if resp.status == 200:
-                    data = json.loads(resp.read().decode("utf-8"))
-                    return str(data.get("state"))
+            data = self._rest_request("GET", f"/jobs/{job_id}")
+            if data:
+                return str(data.get("state"))
         except Exception as e:
             logger.warning("Failed to query state for Flink job '%s': %s", job_id, e)
         return None
+
+    def get_checkpoint_metrics(self, job_id: Optional[str] = None) -> Dict[str, Any]:
+        """Query checkpoint statistics and history for a given or active Flink job."""
+        target_id = job_id or self.get_active_job_id()
+        if not target_id:
+            return {
+                "available": False,
+                "message": "No active Flink job",
+                "job_id": None,
+                "counts": {"total": 0, "completed": 0, "failed": 0, "in_progress": 0, "restored": 0},
+                "latest_checkpoint": None,
+                "latest_savepoint": None,
+                "summary": {"avg_duration_ms": 0, "avg_state_size_bytes": 0},
+            }
+
+        data = self._rest_request("GET", f"/jobs/{target_id}/checkpoints")
+        if not data:
+            return {
+                "available": False,
+                "message": f"Unable to fetch checkpoints for job {target_id}",
+                "job_id": target_id,
+                "counts": {"total": 0, "completed": 0, "failed": 0, "in_progress": 0, "restored": 0},
+                "latest_checkpoint": None,
+                "latest_savepoint": None,
+                "summary": {"avg_duration_ms": 0, "avg_state_size_bytes": 0},
+            }
+
+        counts = data.get("counts", {})
+        latest = data.get("latest", {})
+        summary = data.get("summary", {})
+
+        latest_completed = latest.get("completed")
+        latest_chk_info = None
+        if latest_completed:
+            latest_chk_info = {
+                "id": latest_completed.get("id"),
+                "status": latest_completed.get("status"),
+                "external_path": latest_completed.get("external_path"),
+                "state_size_bytes": latest_completed.get("state_size", 0),
+                "duration_ms": latest_completed.get("end_to_end_duration", 0),
+                "trigger_timestamp": latest_completed.get("trigger_timestamp"),
+            }
+
+        latest_savepoint = latest.get("savepoint")
+        latest_sp_info = None
+        if latest_savepoint:
+            latest_sp_info = {
+                "id": latest_savepoint.get("id"),
+                "status": latest_savepoint.get("status"),
+                "external_path": latest_savepoint.get("external_path"),
+                "state_size_bytes": latest_savepoint.get("state_size", 0),
+                "trigger_timestamp": latest_savepoint.get("trigger_timestamp"),
+            }
+
+        latest_failed = latest.get("failed")
+        latest_failed_info = None
+        if latest_failed:
+            latest_failed_info = {
+                "id": latest_failed.get("id"),
+                "status": latest_failed.get("status"),
+                "failure_message": latest_failed.get("failure_message"),
+                "failure_timestamp": latest_failed.get("failure_timestamp"),
+            }
+
+        avg_dur = summary.get("end_to_end_duration", {}).get("avg", 0)
+        avg_sz = summary.get("state_size", {}).get("avg", 0)
+
+        return {
+            "available": True,
+            "job_id": target_id,
+            "counts": {
+                "total": counts.get("total", 0),
+                "completed": counts.get("completed", 0),
+                "failed": counts.get("failed", 0),
+                "in_progress": counts.get("in_progress", 0),
+                "restored": counts.get("restored", 0),
+            },
+            "latest_checkpoint": latest_chk_info,
+            "latest_savepoint": latest_sp_info,
+            "latest_failed": latest_failed_info,
+            "summary": {
+                "avg_duration_ms": 0 if str(avg_dur) == "NaN" else avg_dur,
+                "avg_state_size_bytes": 0 if str(avg_sz) == "NaN" else avg_sz,
+            },
+        }
+
+    def get_job_exceptions(self, job_id: Optional[str] = None) -> Dict[str, Any]:
+        """Query execution exceptions and root cause for a given or active Flink job."""
+        target_id = job_id or self.get_active_job_id()
+        if not target_id:
+            return {"job_id": None, "has_exceptions": False, "root_exception": None}
+
+        data = self._rest_request("GET", f"/jobs/{target_id}/exceptions")
+        if not data:
+            return {"job_id": target_id, "has_exceptions": False, "root_exception": None}
+
+        root_exc = data.get("root-exception")
+        all_exceptions = data.get("all-exceptions", [])
+        return {
+            "job_id": target_id,
+            "has_exceptions": bool(root_exc or all_exceptions),
+            "root_exception": root_exc[:500] if root_exc else None,
+            "timestamp": data.get("timestamp"),
+            "truncated": data.get("truncated", False),
+        }
+
+    def trigger_savepoint(self, job_id: Optional[str] = None, cancel: bool = False) -> Dict[str, Any]:
+        """Trigger an asynchronous savepoint via Flink REST API and poll until completed."""
+        target_id = job_id or self.get_active_job_id()
+        if not target_id:
+            return {"status": "FAILED", "error": "No active Flink job"}
+
+        endpoint = f"/jobs/{target_id}/stop" if cancel else f"/jobs/{target_id}/savepoints"
+        payload = {"drain": False, "targetDirectory": self.savepoints_dir}
+        res = self._rest_request("POST", endpoint, payload=payload, timeout=10)
+        if not res or "request-id" not in res:
+            return {"status": "FAILED", "error": f"Failed to trigger savepoint on {endpoint}"}
+
+        trigger_id = res["request-id"]
+        for _ in range(20):
+            time.sleep(1.0)
+            status_data = self._rest_request("GET", f"/jobs/{target_id}/savepoints/{trigger_id}")
+            if status_data:
+                status_id = status_data.get("status", {}).get("id")
+                if status_id == "COMPLETED":
+                    loc = status_data.get("operation", {}).get("location")
+                    self._last_savepoint_path = loc
+                    return {"status": "SUCCESS", "savepoint_path": loc, "trigger_id": trigger_id}
+                elif status_id in ("FAILED", "FAILURE"):
+                    cause = status_data.get("operation", {}).get("failure-cause")
+                    return {"status": "FAILED", "error": f"Savepoint failed: {cause}", "trigger_id": trigger_id}
+
+        return {"status": "TIMEOUT", "error": "Savepoint trigger timed out", "trigger_id": trigger_id}
+
+    def get_telemetry_summary(self) -> Dict[str, Any]:
+        """Aggregate Flink cluster health, active job status, and checkpoint telemetry."""
+        active_id = self.get_active_job_id()
+        cluster = self.get_cluster_overview()
+        job_status = self.get_job_status(active_id) if active_id else None
+        checkpoints = self.get_checkpoint_metrics(active_id) if active_id else {}
+        exceptions = self.get_job_exceptions(active_id) if active_id else {}
+
+        return {
+            "cluster": cluster,
+            "active_job": {
+                "job_id": active_id,
+                "status": job_status,
+                "checkpoints": checkpoints,
+                "exceptions": exceptions,
+            },
+        }
 
     def pause_job(self) -> Dict[str, Any]:
         """Cancel/pause running Flink job with savepoint (idempotent).
@@ -213,7 +425,7 @@ class FlinkController:
             }
 
         user = os.getenv("MINIO_ROOT_USER") or os.getenv("MINIO_ACCESS_KEY") or "icestream_minio"
-        pwd = os.getenv("MINIO_ROOT_PASSWORD") or os.getenv("MINIO_SECRET_KEY") or "icestream_minio_secret"
+        pwd = os.getenv("MINIO_ROOT_PASSWORD") or os.getenv("MINIO_SECRET_KEY") or "change-me-minio-secret"
 
         try:
             with open(sql_path, "r", encoding="utf-8") as f:

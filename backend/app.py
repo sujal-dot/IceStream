@@ -105,6 +105,25 @@ def set_remediation_controller(controller: Optional[RemediationController]) -> N
     _global_remediation_controller = controller
 
 
+from remediation.flink_controller import FlinkController
+
+_global_flink_controller: Optional[FlinkController] = None
+
+
+def get_flink_controller() -> FlinkController:
+    """Retrieve or initialize global FlinkController."""
+    global _global_flink_controller
+    if _global_flink_controller is None:
+        _global_flink_controller = FlinkController()
+    return _global_flink_controller
+
+
+def set_flink_controller(controller: Optional[FlinkController]) -> None:
+    """Override global FlinkController (for testing)."""
+    global _global_flink_controller
+    _global_flink_controller = controller
+
+
 import threading
 
 _telemetry_thread_started = False
@@ -160,6 +179,7 @@ def create_app(
     breaker: Optional[CircuitBreaker] = None,
     state_manager: Optional[PipelineStateManager] = None,
     controller: Optional[RemediationController] = None,
+    flink_controller: Optional[FlinkController] = None,
 ) -> FastAPI:
     """Construct and configure the FastAPI Observability Backend application."""
     if engine is not None:
@@ -170,6 +190,8 @@ def create_app(
         set_state_manager(state_manager)
     if controller is not None:
         set_remediation_controller(controller)
+    if flink_controller is not None:
+        set_flink_controller(flink_controller)
 
     # Start Kafka telemetry listener daemon
     _start_kafka_telemetry_listener()
@@ -224,6 +246,10 @@ def create_app(
             engine.get_metrics_snapshot()
         except Exception as e:
             logger.warning(f"Error flushing metrics snapshot during shutdown: {e}")
+        try:
+            get_db_storage().close()
+        except Exception as e:
+            logger.warning(f"Error closing storage backend connection pool: {e}")
 
     # Register Routers
     app.include_router(pipeline.router)
