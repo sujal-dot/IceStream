@@ -29,7 +29,7 @@ from remediation.controller import RemediationController
 from backend.storage.db import StorageBackend, get_db_storage
 
 # Import API Routers
-from backend.api import incidents, metrics, pipeline, lineage, quality, schema, events
+from backend.api import incidents, metrics, pipeline, lineage, quality, schema, events, lakehouse
 from backend.database.connection import check_db_health
 
 logger = logging.getLogger("icestream.backend")
@@ -180,6 +180,7 @@ def create_app(
     state_manager: Optional[PipelineStateManager] = None,
     controller: Optional[RemediationController] = None,
     flink_controller: Optional[FlinkController] = None,
+    maintenance_service: Optional[Any] = None,
 ) -> FastAPI:
     """Construct and configure the FastAPI Observability Backend application."""
     if engine is not None:
@@ -192,6 +193,8 @@ def create_app(
         set_remediation_controller(controller)
     if flink_controller is not None:
         set_flink_controller(flink_controller)
+    if maintenance_service is not None:
+        lakehouse.set_maintenance_service(maintenance_service)
 
     # Start Kafka telemetry listener daemon
     _start_kafka_telemetry_listener()
@@ -211,6 +214,7 @@ def create_app(
             {"name": "Quality", "description": "Data Quality Engine Summaries & Severity Metrics"},
             {"name": "Schema", "description": "Schema Drift Detector & Version Compatibility"},
             {"name": "Events", "description": "Sanitized Event Metadata Inspection"},
+            {"name": "Lakehouse", "description": "Apache Iceberg Table Health, Compaction & Maintenance Operations"},
         ],
     )
     # CORS Configuration
@@ -260,6 +264,7 @@ def create_app(
     app.include_router(quality.router)
     app.include_router(schema.router)
     app.include_router(events.router)
+    app.include_router(lakehouse.router)
 
     @app.get(
         "/health",

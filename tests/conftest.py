@@ -17,9 +17,8 @@ os.environ.setdefault("MINIO_ROOT_USER", "icestream_minio")
 os.environ.setdefault("MINIO_ROOT_PASSWORD", "change-me-minio-secret")
 os.environ.setdefault("MINIO_ACCESS_KEY", "icestream_minio")
 os.environ.setdefault("MINIO_SECRET_KEY", "change-me-minio-secret")
-os.environ.setdefault("MINIO_ENDPOINT", "http://localhost:9000")
-
-os.environ["ICESTREAM_API_TOKEN"] = "test_api_token_secret_12345"
+ALL_TEST_TOKENS = "test_api_token_secret_12345,test_primary_key_12345,test_secondary_key_67890,test_secret_token_12345"
+os.environ["ICESTREAM_API_TOKEN"] = ALL_TEST_TOKENS
 os.environ["TESTING"] = "true"
 
 
@@ -34,4 +33,4 @@ def setup_test_env():
 
     os.environ["MINIO_ROOT_USER"] = os.environ.get("MINIO_ROOT_USER", "icestream_minio")
     os.environ["MINIO_ROOT_PASSWORD"] = os.environ.get("MINIO_ROOT_PASSWORD", "change-me-minio-secret")
-    os.environ["ICESTREAM_API_TOKEN"] = os.environ.get("ICESTREAM_API_TOKEN", "test_api_token_secret_12345")
+    os.environ["ICESTREAM_API_TOKEN"] = ALL_TEST_TOKENS

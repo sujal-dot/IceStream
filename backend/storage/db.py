@@ -357,6 +357,24 @@ class StorageBackend:
                 metadata TEXT
             );
             """,
+            """
+            CREATE TABLE IF NOT EXISTS lakehouse_maintenance_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT if_sqlite,
+                table_name VARCHAR(128) NOT NULL,
+                operation VARCHAR(64) NOT NULL,
+                status VARCHAR(32) NOT NULL,
+                files_before INT DEFAULT 0,
+                files_after INT DEFAULT 0,
+                records_compacted INT DEFAULT 0,
+                snapshots_expired INT DEFAULT 0,
+                orphan_files_deleted INT DEFAULT 0,
+                bytes_reclaimed BIGINT DEFAULT 0,
+                duration_ms REAL DEFAULT 0.0,
+                error TEXT,
+                started_at TIMESTAMP NOT NULL,
+                completed_at TIMESTAMP
+            );
+            """,
         ]
 
         # Columns to ensure exist for backwards compatibility with existing DB tables
@@ -1476,6 +1494,112 @@ class StorageBackend:
                     "SELECT * FROM circuit_breaker_history WHERE pipeline_id = %s ORDER BY id DESC LIMIT %s",
                     (pipeline_id, limit),
                 )
+                rows = cursor.fetchall()
+            conn.close()
+            return [dict(r) for r in rows]
+
+    # --- Lakehouse Maintenance Methods ---
+
+    def record_maintenance_run(
+        self,
+        table_name: str,
+        operation: str,
+        status: str,
+        files_before: int = 0,
+        files_after: int = 0,
+        records_compacted: int = 0,
+        snapshots_expired: int = 0,
+        orphan_files_deleted: int = 0,
+        bytes_reclaimed: int = 0,
+        started_at: Optional[datetime] = None,
+        completed_at: Optional[datetime] = None,
+        duration_ms: float = 0.0,
+        error: Optional[str] = None,
+    ) -> Optional[int]:
+        """Record an Iceberg table maintenance execution in persistent audit log."""
+        if started_at is None:
+            started_at = datetime.now(timezone.utc)
+        if completed_at is None:
+            completed_at = datetime.now(timezone.utc)
+
+        if self.use_sqlite:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO lakehouse_maintenance_runs (
+                    table_name, operation, status, files_before, files_after,
+                    records_compacted, snapshots_expired, orphan_files_deleted,
+                    bytes_reclaimed, duration_ms, error, started_at, completed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    table_name, operation, status, files_before, files_after,
+                    records_compacted, snapshots_expired, orphan_files_deleted,
+                    bytes_reclaimed, duration_ms, error, started_at, completed_at
+                ),
+            )
+            run_id = cursor.lastrowid
+            conn.commit()
+            return run_id
+        else:
+            conn = self._get_connection()
+            run_id = None
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO lakehouse_maintenance_runs (
+                        table_name, operation, status, files_before, files_after,
+                        records_compacted, snapshots_expired, orphan_files_deleted,
+                        bytes_reclaimed, duration_ms, error, started_at, completed_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id;
+                    """,
+                    (
+                        table_name, operation, status, files_before, files_after,
+                        records_compacted, snapshots_expired, orphan_files_deleted,
+                        bytes_reclaimed, duration_ms, error, started_at, completed_at
+                    ),
+                )
+                row = cursor.fetchone()
+                if row:
+                    run_id = row[0]
+            conn.commit()
+            conn.close()
+            return run_id
+
+    def get_maintenance_history(
+        self, table_name: Optional[str] = None, limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """Retrieve recent lakehouse maintenance execution history."""
+        if self.use_sqlite:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            if table_name:
+                cursor.execute(
+                    "SELECT * FROM lakehouse_maintenance_runs WHERE table_name = ? ORDER BY id DESC LIMIT ?",
+                    (table_name, limit),
+                )
+            else:
+                cursor.execute(
+                    "SELECT * FROM lakehouse_maintenance_runs ORDER BY id DESC LIMIT ?",
+                    (limit,),
+                )
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
+        else:
+            conn = self._get_connection()
+            with conn.cursor() as cursor:
+                if table_name:
+                    cursor.execute(
+                        "SELECT * FROM lakehouse_maintenance_runs WHERE table_name = %s ORDER BY id DESC LIMIT %s",
+                        (table_name, limit),
+                    )
+                else:
+                    cursor.execute(
+                        "SELECT * FROM lakehouse_maintenance_runs ORDER BY id DESC LIMIT %s",
+                        (limit,),
+                    )
                 rows = cursor.fetchall()
             conn.close()
             return [dict(r) for r in rows]

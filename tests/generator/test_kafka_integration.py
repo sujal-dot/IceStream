@@ -85,9 +85,9 @@ def test_kafka_integration_producer_consumer():
 
 
 def test_kafka_fault_injection_integration():
-    """Produce corrupted events (100% NULL rate) to checkout-events and verify consumed messages contain NULL values."""
+    """Produce corrupted events (100% NULL rate) to an isolated test topic and verify consumed messages contain NULL values."""
     bootstrap_server = "localhost:9092"
-    topic = "checkout-events"
+    topic = f"test-fault-{uuid.uuid4().hex[:8]}"
     test_group = f"test-group-fault-{uuid.uuid4().hex[:8]}"
 
     config = GeneratorConfig(

@@ -9,7 +9,7 @@ from backend.app import create_app
 
 @pytest.fixture
 def client():
-    os.environ["ICESTREAM_API_TOKEN"] = "test_secret_token_12345"
+    os.environ["ICESTREAM_API_TOKEN"] = "test_secret_token_12345,test_api_token_secret_12345,test_primary_key_12345,test_secondary_key_67890"
     app = create_app()
     return TestClient(app)
 

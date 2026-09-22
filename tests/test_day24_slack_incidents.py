@@ -282,7 +282,8 @@ def test_fastapi_incidents_api(test_client, incident_service):
     detail_json = r_detail.json()
     assert detail_json["incident"]["incident_id"] == inc_id
 
-    auth_headers = {"Authorization": f"Bearer {os.environ.get('ICESTREAM_API_TOKEN', 'test_api_token_secret_12345')}"}
+    token = os.environ.get("ICESTREAM_API_TOKEN", "test_api_token_secret_12345").split(",")[0]
+    auth_headers = {"Authorization": f"Bearer {token}"}
 
     # 3. POST /incidents/{id}/acknowledge
     r_ack = test_client.post(f"/incidents/{inc_id}/acknowledge", headers=auth_headers)

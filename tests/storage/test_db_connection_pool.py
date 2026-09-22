@@ -125,3 +125,38 @@ def test_postgresql_connection_pooling_if_available():
     # Test clean close
     storage.close()
     assert storage.get_pool_status()["pooled"] is False
+
+
+def test_record_and_get_maintenance_run_sqlite():
+    """Verify storing and retrieving lakehouse maintenance run records."""
+    storage = StorageBackend(use_sqlite=True)
+
+    run_id = storage.record_maintenance_run(
+        table_name="bronze.checkout_events",
+        operation="COMPACT",
+        status="SUCCESS",
+        files_before=15,
+        files_after=1,
+        records_compacted=2500,
+        snapshots_expired=10,
+        orphan_files_deleted=5,
+        bytes_reclaimed=102400,
+        duration_ms=350.0,
+    )
+
+    assert run_id is not None
+    history = storage.get_maintenance_history(table_name="bronze.checkout_events", limit=10)
+    assert len(history) >= 1
+    latest = history[0]
+    assert latest["table_name"] == "bronze.checkout_events"
+    assert latest["operation"] == "COMPACT"
+    assert latest["status"] == "SUCCESS"
+    assert latest["files_before"] == 15
+    assert latest["files_after"] == 1
+    assert latest["records_compacted"] == 2500
+    assert latest["snapshots_expired"] == 10
+    assert latest["orphan_files_deleted"] == 5
+    assert latest["bytes_reclaimed"] == 102400
+
+    storage.close()
+
