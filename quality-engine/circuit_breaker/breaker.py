@@ -107,13 +107,13 @@ class CircuitBreaker:
 
                 op_at = db_state.get("opened_at")
                 if op_at:
-                    self._opened_at_dt = parse_iso_timestamp(op_at) if isinstance(op_at, str) else op_at
+                    self._opened_at_dt = parse_iso_timestamp(op_at)
                 else:
                     self._opened_at_dt = None
 
                 ch_at = db_state.get("last_state_change")
                 if ch_at:
-                    self._last_state_change_dt = parse_iso_timestamp(ch_at) if isinstance(ch_at, str) else ch_at
+                    self._last_state_change_dt = parse_iso_timestamp(ch_at)
 
                 self._last_error_rate = float(db_state.get("last_error_rate", 0.0))
                 self._recovery_attempts = int(db_state.get("recovery_attempts", 0))
@@ -171,7 +171,7 @@ class CircuitBreaker:
                         pass
                 op_at = db_state.get("opened_at")
                 if op_at:
-                    self._opened_at_dt = parse_iso_timestamp(op_at) if isinstance(op_at, str) else op_at
+                    self._opened_at_dt = parse_iso_timestamp(op_at)
                 elif self._state != CircuitState.OPEN:
                     self._opened_at_dt = None
                 self._last_error_rate = float(db_state.get("last_error_rate", self._last_error_rate))
@@ -207,7 +207,12 @@ class CircuitBreaker:
 
         if self._state == CircuitState.OPEN and self._opened_at_dt is not None:
             now_dt = self._clock.now()
-            elapsed = (now_dt - self._opened_at_dt).total_seconds()
+            opened_at = self._opened_at_dt
+            if opened_at.tzinfo is None:
+                opened_at = opened_at.replace(tzinfo=timezone.utc)
+            if now_dt.tzinfo is None:
+                now_dt = now_dt.replace(tzinfo=timezone.utc)
+            elapsed = (now_dt - opened_at).total_seconds()
             if elapsed >= self._config.recovery_timeout_seconds:
                 self._execute_transition_locked(
                     new_state=CircuitState.HALF_OPEN,

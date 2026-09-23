@@ -265,14 +265,14 @@ class ErrorRateEngine:
                 if persisted and persisted.get("total_events", 0) > 0:
                     updated_at_str = persisted.get("updated_at")
                     is_fresh = True
-                    if updated_at_str:
-                        try:
-                            updated_at_dt = datetime.fromisoformat(updated_at_str.replace("Z", "+00:00"))
+                    try:
+                        updated_at_dt = parse_iso_timestamp(updated_at_str)
+                        if updated_at_dt:
                             now_dt = self._clock.now()
                             if (now_dt - updated_at_dt).total_seconds() > window_seconds:
                                 is_fresh = False
-                        except Exception:
-                            pass
+                    except Exception:
+                        pass
                     if is_fresh:
                         total_events = int(persisted.get("total_events", 0))
                         valid_events = int(persisted.get("valid_events", 0))

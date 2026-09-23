@@ -186,18 +186,6 @@ class QuarantineWriter:
         if not records:
             return (0, True)
 
-        try:
-            tbl = self.catalog.load_table(QUARANTINE_TABLE_NAME)
-        except Exception as load_err:
-            logger.warning("Failed to load table '%s', attempting initialization: %s", QUARANTINE_TABLE_NAME, load_err)
-            try:
-                self.ensure_table_exists()
-                tbl = self.catalog.load_table(QUARANTINE_TABLE_NAME)
-            except Exception as init_err:
-                logger.error("Failed to initialize or load table '%s': %s", QUARANTINE_TABLE_NAME, init_err)
-                self._metrics.increment_counter("quarantine_write_failure_total", amount=len(records))
-                return (0, False)
-
         pydict = {
             "quarantine_id": [r.quarantine_id for r in records],
             "event_id": [r.event_id for r in records],
@@ -210,18 +198,34 @@ class QuarantineWriter:
             "schema_version": [r.schema_version for r in records],
         }
 
-        try:
-            arrow_table = pa.Table.from_pydict(pydict, schema=PYARROW_QUARANTINE_SCHEMA)
-            tbl.append(arrow_table)
-            with self._lock:
-                self._append_count += 1
-            self._metrics.increment_counter("quarantine_write_success_total", amount=len(records))
-            logger.info("Successfully appended %d record(s) to '%s' (append #%d)", len(records), QUARANTINE_TABLE_NAME, self._append_count)
-            return (len(records), True)
-        except Exception as e:
-            logger.error("Failed to append records to Iceberg quarantine table '%s': %s", QUARANTINE_TABLE_NAME, e)
-            self._metrics.increment_counter("quarantine_write_failure_total", amount=len(records))
-            return (0, False)
+        arrow_table = pa.Table.from_pydict(pydict, schema=PYARROW_QUARANTINE_SCHEMA)
+
+        max_retries = 5
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                try:
+                    tbl = self.catalog.load_table(QUARANTINE_TABLE_NAME)
+                except Exception as load_err:
+                    logger.warning("Failed to load table '%s', attempting initialization: %s", QUARANTINE_TABLE_NAME, load_err)
+                    self.ensure_table_exists()
+                    tbl = self.catalog.load_table(QUARANTINE_TABLE_NAME)
+
+                tbl.append(arrow_table)
+                with self._lock:
+                    self._append_count += 1
+                self._metrics.increment_counter("quarantine_write_success_total", amount=len(records))
+                logger.info("Successfully appended %d record(s) to '%s' (append #%d)", len(records), QUARANTINE_TABLE_NAME, self._append_count)
+                return (len(records), True)
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    time.sleep(0.15 * (2 ** attempt))
+                    continue
+
+        logger.error("Failed to append records to Iceberg quarantine table '%s': %s", QUARANTINE_TABLE_NAME, last_error)
+        self._metrics.increment_counter("quarantine_write_failure_total", amount=len(records))
+        return (0, False)
 
     def close(self) -> Tuple[int, bool]:
         """Flush remaining buffered records on shutdown."""
