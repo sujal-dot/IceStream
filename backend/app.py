@@ -29,7 +29,17 @@ from remediation.controller import RemediationController
 from backend.storage.db import StorageBackend, get_db_storage
 
 # Import API Routers
-from backend.api import incidents, metrics, pipeline, lineage, quality, schema, events, lakehouse
+from backend.api import (
+    auth,
+    events,
+    incidents,
+    lakehouse,
+    lineage,
+    metrics,
+    pipeline,
+    quality,
+    schema,
+)
 from backend.database.connection import check_db_health
 
 logger = logging.getLogger("icestream.backend")
@@ -215,6 +225,7 @@ def create_app(
             {"name": "Schema", "description": "Schema Drift Detector & Version Compatibility"},
             {"name": "Events", "description": "Sanitized Event Metadata Inspection"},
             {"name": "Lakehouse", "description": "Apache Iceberg Table Health, Compaction & Maintenance Operations"},
+            {"name": "Authentication", "description": "JWT Token Generation, RBAC Scopes & User Identity"},
         ],
     )
     # CORS Configuration
@@ -256,6 +267,7 @@ def create_app(
             logger.warning(f"Error closing storage backend connection pool: {e}")
 
     # Register Routers
+    app.include_router(auth.router)
     app.include_router(pipeline.router)
 
     app.include_router(metrics.router)

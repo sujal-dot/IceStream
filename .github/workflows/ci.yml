@@ -1,0 +1,138 @@
+name: IceStream CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Code Quality & Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Linting Tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black
+
+      - name: Check Python Code Formatting (Black)
+        run: |
+          black --check --diff backend/ quality-engine/ schema/ iceberg/ tests/ || true
+
+      - name: Lint with Flake8
+        run: |
+          # Stop build if there are Python syntax errors or undefined names
+          flake8 backend/ quality-engine/ iceberg/ --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Exit-zero treats all errors as warnings
+          flake8 backend/ quality-engine/ iceberg/ --count --exit-zero --max-complexity=15 --max-line-length=120 --statistics
+
+  test:
+    name: Matrix Test Suite (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11"]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpq-dev gcc curl
+
+      - name: Install Application & Test Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install pytest pytest-asyncio anyio faker great-expectations pyiceberg pyarrow
+
+      - name: Run Unit, Security & RBAC Test Suites
+        env:
+          ICESTREAM_API_TOKEN: test_api_token_secret_12345,test_primary_key_12345,test_secondary_key_67890,test_secret_token_12345
+          JWT_SECRET_KEY: test_ci_jwt_secret_key_super_secure_32bytes_minimum
+          PYTHONPATH: .:/app:backend:quality-engine:iceberg
+        run: |
+          pytest tests/test_jwt_rbac.py \
+                 tests/test_api_security.py \
+                 tests/test_security_phase1.py \
+                 tests/test_api_contract.py \
+                 tests/test_metrics_api.py \
+                 tests/api/test_lakehouse_api.py \
+                 tests/circuit-breaker/test_centralized_circuit_breaker.py \
+                 tests/flink/test_flink_controller_rest.py \
+                 tests/iceberg/test_compactor.py \
+                 tests/iceberg/test_partition_manager.py \
+                 tests/iceberg/test_snapshot_manager.py \
+                 tests/test_circuit_breaker.py \
+                 tests/test_error_rate.py \
+                 tests/test_day22_self_healing.py \
+                 -v --tb=short
+
+  docker-security:
+    name: Container Security & Non-Root Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker Backend Image
+        run: |
+          docker build -t icestream-backend:ci-test -f Dockerfile .
+
+      - name: Verify Non-Root User Execution
+        run: |
+          echo "Verifying running user inside container..."
+          CONTAINER_USER=$(docker run --rm icestream-backend:ci-test whoami)
+          CONTAINER_UID=$(docker run --rm icestream-backend:ci-test id -u)
+          
+          echo "Container user: ${CONTAINER_USER}"
+          echo "Container UID:  ${CONTAINER_UID}"
+          
+          if [ "${CONTAINER_USER}" = "root" ] || [ "${CONTAINER_UID}" -eq 0 ]; then
+            echo "SECURITY VIOLATION: Container must NOT execute as root!"
+            exit 1
+          fi
+          
+          if [ "${CONTAINER_USER}" != "icestream" ] || [ "${CONTAINER_UID}" -ne 10001 ]; then
+            echo "SECURITY VIOLATION: Container user should be icestream (UID 10001), got ${CONTAINER_USER} (UID ${CONTAINER_UID})"
+            exit 1
+          fi
+          
+          echo "Container Security Check PASSED: Running safely as non-root user 'icestream' (UID 10001)."
+
+      - name: Verify Container File Permissions
+        run: |
+          echo "Verifying application directory ownership..."
+          APP_OWNER=$(docker run --rm icestream-backend:ci-test stat -c '%U:%G' /app)
+          echo "Ownership of /app: ${APP_OWNER}"
+          if [ "${APP_OWNER}" != "icestream:icestream" ]; then
+            echo "WARNING: /app ownership is ${APP_OWNER}, expected icestream:icestream"
+            exit 1
+          fi
+          echo "File permissions verification PASSED."

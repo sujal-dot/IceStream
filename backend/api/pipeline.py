@@ -12,7 +12,7 @@ from backend.models.pipeline import (
     RecoveryResponse,
 )
 from backend.services.pipeline_service import PipelineService
-from backend.security import verify_api_token
+from backend.security import require_role, verify_api_token
 
 router = APIRouter(prefix="/pipeline", tags=["Pipeline"])
 
@@ -48,7 +48,7 @@ def get_pipeline_status() -> PipelineStatusResponse:
     response_model=PipelineControlResponse,
     summary="Pause Pipeline Operations",
     description="Manually pause pipeline processing using authoritative state transitions.",
-    dependencies=[Depends(verify_api_token)],
+    dependencies=[Depends(require_role(["admin", "operator"]))],
 )
 def pause_pipeline(
     payload: Optional[PipelineControlRequest] = Body(default=None),
@@ -63,7 +63,7 @@ def pause_pipeline(
     response_model=PipelineControlResponse,
     summary="Resume Pipeline Operations",
     description="Manually resume pipeline processing. Blocked with 409 Conflict if circuit breaker is OPEN.",
-    dependencies=[Depends(verify_api_token)],
+    dependencies=[Depends(require_role(["admin", "operator"]))],
 )
 def resume_pipeline(
     payload: Optional[PipelineControlRequest] = Body(default=None),
@@ -78,7 +78,7 @@ def resume_pipeline(
     response_model=RecoveryResponse,
     summary="Trigger Automated Recovery",
     description="Starts the existing remediation workflow when recovery is eligible.",
-    dependencies=[Depends(verify_api_token)],
+    dependencies=[Depends(require_role(["admin", "operator"]))],
 )
 def recover_pipeline(
     payload: Optional[RecoverRequest] = Body(default=None),

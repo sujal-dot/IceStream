@@ -13,6 +13,7 @@ from backend.models.lakehouse import (
     TableHealthResponse,
 )
 from backend.storage.db import StorageBackend, get_db_storage
+from backend.security import require_role
 from iceberg.maintenance.manager import LakehouseMaintenanceService
 
 logger = logging.getLogger("icestream.api.lakehouse")
@@ -80,7 +81,11 @@ def get_table_health(
         )
 
 
-@router.post("/compact", response_model=CompactionResponse)
+@router.post(
+    "/compact",
+    response_model=CompactionResponse,
+    dependencies=[Depends(require_role(["admin", "operator"]))],
+)
 def compact_table(
     req: CompactionRequest,
     service: LakehouseMaintenanceService = Depends(get_maintenance_service),
@@ -102,7 +107,11 @@ def compact_table(
         )
 
 
-@router.post("/maintenance", response_model=MaintenanceResponse)
+@router.post(
+    "/maintenance",
+    response_model=MaintenanceResponse,
+    dependencies=[Depends(require_role(["admin", "operator"]))],
+)
 def run_maintenance(
     req: MaintenanceRequest,
     service: LakehouseMaintenanceService = Depends(get_maintenance_service),

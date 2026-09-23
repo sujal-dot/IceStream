@@ -145,14 +145,24 @@ def test_get_table_health_404_not_found(client):
     assert "does not exist" in resp.json()["detail"]
 
 
+AUTH_HEADERS = {"Authorization": "Bearer test_api_token_secret_12345"}
+
+
+def test_post_compact_table_unauthenticated_returns_401(client):
+    """Verify POST /lakehouse/compact without token returns 401 Unauthorized."""
+    payload = {"table_name": "bronze.checkout_events"}
+    resp = client.post("/lakehouse/compact", json=payload)
+    assert resp.status_code == 401
+
+
 def test_post_compact_table(client):
-    """Verify POST /lakehouse/compact executes compaction and returns metrics."""
+    """Verify POST /lakehouse/compact executes compaction and returns metrics with auth."""
     payload = {
         "table_name": "bronze.checkout_events",
         "target_file_size_mb": 128,
         "min_file_count": 2,
     }
-    resp = client.post("/lakehouse/compact", json=payload)
+    resp = client.post("/lakehouse/compact", json=payload, headers=AUTH_HEADERS)
     assert resp.status_code == 200
     data = resp.json()
     assert data["table_name"] == "bronze.checkout_events"
@@ -163,7 +173,7 @@ def test_post_compact_table(client):
 
 
 def test_post_maintenance_pipeline(client):
-    """Verify POST /lakehouse/maintenance executes full workflow."""
+    """Verify POST /lakehouse/maintenance executes full workflow with auth."""
     payload = {
         "table_name": "bronze.checkout_events",
         "compact": True,
@@ -173,7 +183,7 @@ def test_post_maintenance_pipeline(client):
         "orphan_safety_seconds": 3600,
         "dry_run": False,
     }
-    resp = client.post("/lakehouse/maintenance", json=payload)
+    resp = client.post("/lakehouse/maintenance", json=payload, headers=AUTH_HEADERS)
     assert resp.status_code == 200
     data = resp.json()
     assert data["table_name"] == "bronze.checkout_events"

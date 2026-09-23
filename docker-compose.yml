@@ -324,6 +324,8 @@ services:
     command: python3 -m uvicorn backend.app:app --host 0.0.0.0 --port 8000 --workers ${WEB_WORKERS:-4}
     ports:
       - "8000:8000"
+    security_opt:
+      - no-new-privileges:true
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
@@ -332,6 +334,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       ICESTREAM_API_TOKEN: ${ICESTREAM_API_TOKEN:-}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-}
+      ICEBERG_CATALOG_URI: ${ICEBERG_CATALOG_URI:-http://iceberg-rest:8181}
+      AWS_S3_ENDPOINT: ${AWS_S3_ENDPOINT:-http://minio:9000}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-icestream_minio}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-icestream_minio_secret}
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
       interval: 10s
