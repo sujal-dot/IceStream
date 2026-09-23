@@ -13,7 +13,6 @@ _global_drift_state: Optional[Dict[str, Any]] = None
 
 
 def get_drift_state() -> Optional[Dict[str, Any]]:
-    global _global_drift_state
     return _global_drift_state
 
 

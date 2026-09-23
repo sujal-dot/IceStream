@@ -87,7 +87,7 @@ jobs:
                  tests/iceberg/test_partition_manager.py \
                  tests/iceberg/test_snapshot_manager.py \
                  tests/test_circuit_breaker.py \
-                 tests/test_error_rate.py \
+                 tests/test_day19_error_rate_integration.py \
                  tests/test_day22_self_healing.py \
                  -v --tb=short
 
