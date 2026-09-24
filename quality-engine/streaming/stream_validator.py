@@ -165,6 +165,10 @@ class StreamQualityValidator:
 
         if raw_event_dict is not None:
             event_id = raw_event_dict.get("event_id")
+            # Raw events from Kafka represent application-layer payloads and do not
+            # carry lakehouse platform ingestion metadata. Assign ingestion_time upon stream consumption.
+            if "ingestion_time" not in raw_event_dict:
+                raw_event_dict["ingestion_time"] = datetime.now(timezone.utc).isoformat()
 
         # 2. Rule evaluation via QualityEngine
         try:
@@ -176,7 +180,7 @@ class StreamQualityValidator:
                 error_msg=f"QualityEngine evaluation failure: {str(ex)}",
             )
 
-        is_valid = summary.overall_status == EventStatus.HEALTHY
+        is_valid = summary.overall_status in (EventStatus.HEALTHY, EventStatus.WARNING)
         now_ts = datetime.now(timezone.utc).isoformat()
 
         # 3. Update ErrorRateEngine
@@ -225,8 +229,19 @@ class StreamQualityValidator:
             old_circuit_state = self.circuit_breaker.state
             new_circuit_state = self.circuit_breaker.evaluate(current_error_rate)
 
+            # Auto-close from HALF_OPEN when error rate returns below threshold with adequate sample
+            if (
+                old_circuit_state == CircuitState.HALF_OPEN
+                and current_metrics.total_events >= 10
+                and current_error_rate <= self.circuit_breaker.config.error_threshold
+            ):
+                try:
+                    self.circuit_breaker.record_recovery_result(error_rate=current_error_rate, success=True)
+                except Exception as rec_err:
+                    logger.debug("Could not record recovery result: %s", rec_err)
+
             # Tripped from CLOSED/HALF_OPEN to OPEN
-            if new_circuit_state == CircuitState.OPEN and old_circuit_state != CircuitState.OPEN:
+            elif new_circuit_state == CircuitState.OPEN and old_circuit_state != CircuitState.OPEN:
                 if STREAM_CIRCUIT_TRIPPED_TOTAL is not None:
                     STREAM_CIRCUIT_TRIPPED_TOTAL.labels(pipeline_id=self.pipeline_id).inc()
 

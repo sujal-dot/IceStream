@@ -158,11 +158,13 @@ def _start_kafka_telemetry_listener() -> None:
             from streaming.stream_validator import StreamQualityValidator
 
             bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "127.0.0.1:9092")
+            import uuid
+            telemetry_group = f"icestream-telemetry-{uuid.uuid4().hex[:8]}"
             consumer = Consumer({
                 "bootstrap.servers": bootstrap_servers,
-                "group.id": "icestream-backend-telemetry-group",
+                "group.id": telemetry_group,
                 "auto.offset.reset": "latest",
-                "enable.auto.commit": True,
+                "enable.auto.commit": False,
             })
             consumer.subscribe(["checkout-events"])
 
@@ -206,9 +208,6 @@ def create_app(
     if maintenance_service is not None:
         lakehouse.set_maintenance_service(maintenance_service)
 
-    # Start Kafka telemetry listener daemon
-    _start_kafka_telemetry_listener()
-
     app = FastAPI(
         title="IceStream Observability Telemetry API",
         description="Real-Time Lakehouse Observability & Automated Self-Healing Pipeline Backend",
@@ -251,6 +250,12 @@ def create_app(
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         return response
+
+    # Startup Event Handler
+    @app.on_event("startup")
+    def startup_event():
+        logger.info("[Startup] FastAPI backend started. Starting Kafka telemetry listener...")
+        _start_kafka_telemetry_listener()
 
     # Graceful Shutdown Handler for Durability
     @app.on_event("shutdown")

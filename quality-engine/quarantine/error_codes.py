@@ -18,6 +18,8 @@ RULE_ERROR_CODE_MAP: Dict[str, str] = {
     "currency_valid": "INVALID_CURRENCY",
     "payment_status_valid": "INVALID_PAYMENT_STATUS",
     "event_time_valid": "INVALID_TIMESTAMP",
+    "ingestion_time_not_null": "MISSING_INGESTION_TIME",
+    "ingestion_time_valid": "INVALID_INGESTION_TIME",
     "duplicate_event": "DUPLICATE_EVENT",
     "duplicate_order": "DUPLICATE_ORDER",
     "impossible_amount": "IMPOSSIBLE_AMOUNT",
