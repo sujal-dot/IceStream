@@ -9,30 +9,55 @@ import { LineageCanvas } from '../components/lineage/LineageCanvas';
 import { LineageLegend } from '../components/lineage/LineageLegend';
 import { NodeDetailsPanel } from '../components/lineage/NodeDetailsPanel';
 import { useDashboardData } from '../hooks/useDashboardData';
-import { ApiLineageNode } from '../types/lineage';
-import { IncidentItem } from '../types/dashboard';
+import {
+  IncidentItem,
+  MetricsResponse,
+  PipelineStatusResponse,
+  QualityResponse,
+} from '../types/dashboard';
+import { ApiLineageResponse } from '../types/lineage';
 
 interface DashboardPageProps {
   activeView?: 'dashboard' | 'lineage' | 'incidents';
   onSelectView?: (view: 'dashboard' | 'lineage' | 'incidents') => void;
+  metrics?: MetricsResponse | null;
+  pipelineStatus?: PipelineStatusResponse | null;
+  lineage?: ApiLineageResponse | null;
+  incidents?: IncidentItem[];
+  quality?: QualityResponse | null;
+  isLoading?: boolean;
+  isRefreshing?: boolean;
+  errors?: {
+    metrics?: string;
+    pipeline?: string;
+    lineage?: string;
+    incidents?: string;
+    quality?: string;
+    systemHealth?: string;
+    schemaDrift?: string;
+  };
+  lastUpdated?: string | null;
+  refreshData?: (manual?: boolean) => Promise<void>;
 }
 
-export const DashboardPage: React.FC<DashboardPageProps> = ({
-  activeView = 'dashboard',
-  onSelectView = () => {},
-}) => {
+export const DashboardPage: React.FC<DashboardPageProps> = (props) => {
   const {
-    metrics,
-    pipelineStatus,
-    lineage,
-    incidents,
-    quality,
-    isLoading,
-    isRefreshing,
-    errors,
-    lastUpdated,
-    refreshData,
-  } = useDashboardData(1000);
+    activeView = 'dashboard',
+    onSelectView = () => {},
+  } = props;
+
+  const fallbackData = useDashboardData(props.metrics !== undefined ? 0 : 2000);
+
+  const metrics = props.metrics !== undefined ? props.metrics : fallbackData.metrics;
+  const pipelineStatus = props.pipelineStatus !== undefined ? props.pipelineStatus : fallbackData.pipelineStatus;
+  const lineage = props.lineage !== undefined ? props.lineage : fallbackData.lineage;
+  const incidents = props.incidents !== undefined ? props.incidents : fallbackData.incidents;
+  const quality = props.quality !== undefined ? props.quality : fallbackData.quality;
+  const isLoading = props.isLoading !== undefined ? props.isLoading : fallbackData.isLoading;
+  const isRefreshing = props.isRefreshing !== undefined ? props.isRefreshing : fallbackData.isRefreshing;
+  const errors = props.errors !== undefined ? props.errors : fallbackData.errors;
+  const lastUpdated = props.lastUpdated !== undefined ? props.lastUpdated : fallbackData.lastUpdated;
+  const refreshData = props.refreshData !== undefined ? props.refreshData : fallbackData.refreshData;
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedIncident, setSelectedIncident] = useState<IncidentItem | null>(null);

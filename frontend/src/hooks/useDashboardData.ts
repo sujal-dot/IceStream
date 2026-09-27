@@ -69,72 +69,81 @@ export const useDashboardData = (pollIntervalMs: number = 2000): UseDashboardDat
 
     const newErrors: typeof errors = {};
 
-    // 1. Fetch Pipeline Status
-    try {
-      const statusRes = await PipelineApiService.getStatus();
-      if (isMountedRef.current) setPipelineStatus(statusRes);
-    } catch (err: any) {
-      newErrors.pipeline = err.message || 'Pipeline status API error';
+    const [
+      statusResult,
+      metricsResult,
+      lineageResult,
+      incidentsResult,
+      qualityResult,
+      healthResult,
+      driftResult,
+    ] = await Promise.allSettled([
+      PipelineApiService.getStatus?.() ?? Promise.reject(new Error('Pipeline status API error')),
+      MetricsApiService.getMetrics?.() ?? Promise.reject(new Error('Metrics API error')),
+      LineageApiService.getLineage?.() ?? Promise.reject(new Error('Lineage API error')),
+      IncidentsApiService.getIncidents?.() ?? Promise.reject(new Error('Incidents API error')),
+      QualityApiService.getQuality?.() ?? Promise.reject(new Error('Quality API error')),
+      MetricsApiService.getSystemHealth?.() ?? Promise.reject(new Error('System health API error')),
+      SchemaApiService.getSchemaDrift?.() ?? Promise.reject(new Error('Schema drift API error')),
+    ]);
+
+    if (!isMountedRef.current) return;
+
+    if (statusResult.status === 'fulfilled') {
+      setPipelineStatus(statusResult.value);
+    } else {
+      newErrors.pipeline = statusResult.reason?.message || 'Pipeline status API error';
     }
 
-    // 2. Fetch Metrics
-    try {
-      const metricsRes = await MetricsApiService.getMetrics();
-      if (isMountedRef.current) setMetrics(metricsRes);
-    } catch (err: any) {
-      newErrors.metrics = err.message || 'Metrics API error';
+    if (metricsResult.status === 'fulfilled') {
+      setMetrics(metricsResult.value);
+    } else {
+      newErrors.metrics = metricsResult.reason?.message || 'Metrics API error';
     }
 
-    // 3. Fetch Lineage
-    try {
-      const lineageRes = await LineageApiService.getLineage();
-      if (isMountedRef.current) setLineage(lineageRes);
-    } catch (err: any) {
-      newErrors.lineage = err.message || 'Lineage API error';
+    if (lineageResult.status === 'fulfilled') {
+      setLineage(lineageResult.value);
+    } else {
+      newErrors.lineage = lineageResult.reason?.message || 'Lineage API error';
     }
 
-    // 4. Fetch Incidents
-    try {
-      const incidentsRes = await IncidentsApiService.getIncidents();
-      if (isMountedRef.current) setIncidents(incidentsRes.items || []);
-    } catch (err: any) {
-      newErrors.incidents = err.message || 'Incidents API error';
+    if (incidentsResult.status === 'fulfilled') {
+      setIncidents(incidentsResult.value?.items || []);
+    } else {
+      newErrors.incidents = incidentsResult.reason?.message || 'Incidents API error';
     }
 
-    // 5. Fetch Quality
-    try {
-      const qualityRes = await QualityApiService.getQuality();
-      if (isMountedRef.current) setQuality(qualityRes);
-    } catch (err: any) {
-      newErrors.quality = err.message || 'Quality API error';
+    if (qualityResult.status === 'fulfilled') {
+      setQuality(qualityResult.value);
+    } else {
+      newErrors.quality = qualityResult.reason?.message || 'Quality API error';
     }
 
-    // 6. Fetch System Health
-    try {
-      const healthRes = await MetricsApiService.getSystemHealth();
-      if (isMountedRef.current) setSystemHealth(healthRes);
-    } catch (err: any) {
-      newErrors.systemHealth = err.message || 'System health API error';
+    if (healthResult.status === 'fulfilled') {
+      setSystemHealth(healthResult.value);
+    } else {
+      newErrors.systemHealth = healthResult.reason?.message || 'System health API error';
     }
 
-    // 7. Fetch Schema Drift
-    try {
-      const driftRes = await SchemaApiService.getSchemaDrift();
-      if (isMountedRef.current) setSchemaDrift(driftRes);
-    } catch (err: any) {
-      newErrors.schemaDrift = err.message || 'Schema drift API error';
+    if (driftResult.status === 'fulfilled') {
+      setSchemaDrift(driftResult.value);
+    } else {
+      newErrors.schemaDrift = driftResult.reason?.message || 'Schema drift API error';
     }
 
-    if (isMountedRef.current) {
-      setErrors(newErrors);
-      setLastUpdated(new Date().toLocaleTimeString());
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
+    setErrors(newErrors);
+    setLastUpdated(new Date().toLocaleTimeString());
+    setIsLoading(false);
+    setIsRefreshing(false);
   }, []);
 
   useEffect(() => {
     isMountedRef.current = true;
+    if (pollIntervalMs <= 0) {
+      setIsLoading(false);
+      return;
+    }
+
     fetchAllData(false);
 
     const intervalId = setInterval(() => {

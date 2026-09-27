@@ -29,6 +29,10 @@ from remediation.state_manager import PipelineState, PipelineStateManager
 from backend.services.schema_service import set_drift_state
 
 
+from remediation.alert_service import MockAlertService
+from remediation.lakehouse_sink import MockLakehouseSink
+
+
 @pytest.fixture
 def fresh_app():
     """Fixture providing clean FastAPI app with SQLite in-memory storage backend."""
@@ -41,6 +45,8 @@ def fresh_app():
         state_manager=state_mgr,
         circuit_breaker=breaker,
         storage=storage,
+        alert_service=MockAlertService(),
+        lakehouse_sink=MockLakehouseSink(),
     )
 
     set_db_storage(storage)

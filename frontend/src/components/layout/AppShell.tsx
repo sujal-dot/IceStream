@@ -8,15 +8,35 @@ import { CommandCenterModal } from '../dashboard/CommandCenterModal';
 
 // Views / Pages
 import { DashboardPage } from '../../pages/DashboardPage';
-import { PipelinePage } from '../../pages/PipelinePage';
-import { QualityPage } from '../../pages/QualityPage';
-import { SchemaPage } from '../../pages/SchemaPage';
-import { QuarantinePage } from '../../pages/QuarantinePage';
-import { IcebergPage } from '../../pages/IcebergPage';
-import { EventsPage } from '../../pages/EventsPage';
-import { IncidentsPage } from '../../pages/IncidentsPage';
-import { SystemHealthPage } from '../../pages/SystemHealthPage';
-import { SettingsPage } from '../../pages/SettingsPage';
+
+// Lazy-loaded secondary views to reduce initial bundle size & load time
+const PipelinePage = React.lazy(() =>
+  import('../../pages/PipelinePage').then((m) => ({ default: m.PipelinePage }))
+);
+const QualityPage = React.lazy(() =>
+  import('../../pages/QualityPage').then((m) => ({ default: m.QualityPage }))
+);
+const SchemaPage = React.lazy(() =>
+  import('../../pages/SchemaPage').then((m) => ({ default: m.SchemaPage }))
+);
+const QuarantinePage = React.lazy(() =>
+  import('../../pages/QuarantinePage').then((m) => ({ default: m.QuarantinePage }))
+);
+const IcebergPage = React.lazy(() =>
+  import('../../pages/IcebergPage').then((m) => ({ default: m.IcebergPage }))
+);
+const EventsPage = React.lazy(() =>
+  import('../../pages/EventsPage').then((m) => ({ default: m.EventsPage }))
+);
+const IncidentsPage = React.lazy(() =>
+  import('../../pages/IncidentsPage').then((m) => ({ default: m.IncidentsPage }))
+);
+const SystemHealthPage = React.lazy(() =>
+  import('../../pages/SystemHealthPage').then((m) => ({ default: m.SystemHealthPage }))
+);
+const SettingsPage = React.lazy(() =>
+  import('../../pages/SettingsPage').then((m) => ({ default: m.SettingsPage }))
+);
 
 export const AppShell: React.FC = () => {
   const [activeNav, setActiveNav] = useState<NavView>('dashboard');
@@ -26,6 +46,7 @@ export const AppShell: React.FC = () => {
   const {
     metrics,
     pipelineStatus,
+    lineage,
     incidents,
     quality,
     systemHealth,
@@ -51,6 +72,16 @@ export const AppShell: React.FC = () => {
               else if (v === 'incidents') setActiveNav('incidents');
               else setActiveNav('dashboard');
             }}
+            metrics={metrics}
+            pipelineStatus={pipelineStatus}
+            lineage={lineage}
+            incidents={incidents}
+            quality={quality}
+            isLoading={isLoading}
+            isRefreshing={isRefreshing}
+            errors={errors}
+            lastUpdated={lastUpdated}
+            refreshData={refreshData}
           />
         );
       case 'pipeline':
@@ -127,7 +158,17 @@ export const AppShell: React.FC = () => {
           />
 
           {/* Active View Container */}
-          <main className="flex-1 bg-slate-950/80">{renderActiveView()}</main>
+          <main className="flex-1 bg-slate-950/80">
+            <React.Suspense
+              fallback={
+                <div className="flex items-center justify-center p-12 text-slate-400 font-mono text-sm animate-pulse">
+                  Loading view...
+                </div>
+              }
+            >
+              {renderActiveView()}
+            </React.Suspense>
+          </main>
         </div>
       </div>
 

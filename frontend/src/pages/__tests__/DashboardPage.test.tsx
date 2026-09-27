@@ -9,7 +9,7 @@ import { IncidentsApiService } from '../../services/incidentsApi';
 import { QualityApiService } from '../../services/qualityApi';
 
 vi.mock('../../services/metricsApi', () => ({
-  MetricsApiService: { getMetrics: vi.fn() },
+  MetricsApiService: { getMetrics: vi.fn(), getSystemHealth: vi.fn() },
 }));
 
 vi.mock('../../services/pipelineApi', () => ({

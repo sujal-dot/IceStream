@@ -39,6 +39,9 @@ from remediation.controller import RemediationController
 from remediation.state_manager import PipelineStateManager
 
 
+from remediation.alert_service import MockAlertService
+from remediation.lakehouse_sink import MockLakehouseSink
+
 TEST_STATIC_TOKEN = "test_secret_token_12345"
 
 
@@ -57,6 +60,8 @@ def auth_client():
         state_manager=state_mgr,
         circuit_breaker=breaker,
         storage=storage,
+        alert_service=MockAlertService(),
+        lakehouse_sink=MockLakehouseSink(),
     )
 
     app = create_app(

@@ -96,14 +96,27 @@ class RemediationController:
             pipeline_id=self.pipeline_id, storage=self.storage
         )
         self.circuit_breaker = circuit_breaker or CircuitBreaker()
-        self.alert_service = alert_service or SlackAlertAdapter()
+        if alert_service:
+            self.alert_service = alert_service
+        elif self.storage and getattr(self.storage, "use_sqlite", False):
+            self.alert_service = MockAlertService()
+        else:
+            self.alert_service = SlackAlertAdapter()
+
         self.source_adapter = source_adapter or LocalSourceAdapter()
         self.reprocessor = reprocessor or Reprocessor(
             quarantine_writer=quarantine_writer
         )
         self.quarantine_writer = quarantine_writer
         self.flink_controller = flink_controller or FlinkController()
-        self.lakehouse_sink = lakehouse_sink or IcebergLakehouseSink()
+
+        if lakehouse_sink:
+            self.lakehouse_sink = lakehouse_sink
+        elif self.storage and getattr(self.storage, "use_sqlite", False):
+            self.lakehouse_sink = MockLakehouseSink()
+        else:
+            self.lakehouse_sink = IcebergLakehouseSink()
+
         self.max_recovery_attempts = max_recovery_attempts
 
         self._lock = threading.Lock()
