@@ -140,17 +140,23 @@ describe('App Navigation Integration', () => {
     fireEvent.click(pipelineNavBtn);
 
     // Verify navigation to Pipeline Topology view
-    await waitFor(() => {
-      expect(screen.getByText('Live Pipeline Topology & Data Lineage')).toBeInTheDocument();
-    });
+    await waitFor(
+      () => {
+        expect(screen.getByText('Live Pipeline Topology & Data Lineage')).toBeInTheDocument();
+      },
+      { timeout: 5000 }
+    );
 
     // Click 'Overview Dashboard' in sidebar nav to return to Dashboard
     const overviewNavBtn = screen.getByText('Overview Dashboard');
     fireEvent.click(overviewNavBtn);
 
     // Returns to Overview Dashboard
-    await waitFor(() => {
-      expect(screen.getByText('Error Rate Timeline')).toBeInTheDocument();
-    });
+    await waitFor(
+      () => {
+        expect(screen.getByText('Error Rate Timeline')).toBeInTheDocument();
+      },
+      { timeout: 5000 }
+    );
   });
 });

@@ -14,6 +14,9 @@ class EventItem(BaseModel):
     amount: Optional[float] = None
     payment_status: Optional[str] = None
     status: str = "VALID"
+    failure_reason: Optional[str] = None
+    payload_json: Optional[str] = None
+    schema_version: Optional[str] = None
 
 
 class EventListResponse(BaseModel):
