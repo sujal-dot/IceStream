@@ -109,7 +109,7 @@ class StreamQualityValidator:
         pipeline_id: str = "icestream",
         auto_quarantine: bool = True,
         auto_trip_circuit: bool = True,
-        auto_remediate: bool = False,
+        auto_remediate: bool = True,
         circuit_window_seconds: int = 60,
     ) -> None:
         self.pipeline_id = pipeline_id
