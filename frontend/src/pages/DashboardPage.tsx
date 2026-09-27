@@ -15,7 +15,7 @@ import {
   PipelineStatusResponse,
   QualityResponse,
 } from '../types/dashboard';
-import { ApiLineageResponse } from '../types/lineage';
+import { ApiLineageResponse, ApiLineageNode } from '../types/lineage';
 
 interface DashboardPageProps {
   activeView?: 'dashboard' | 'lineage' | 'incidents';

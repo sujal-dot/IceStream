@@ -18,6 +18,26 @@ export default defineConfig({
     port: 5173,
     host: true,
     proxy: {
+      '/health': {
+        target: process.env.VITE_API_BASE_URL || 'http://localhost:8000',
+        changeOrigin: true,
+        bypass: (req) => (isHtmlRequest(req) ? '/index.html' : undefined),
+      },
+      '/auth': {
+        target: process.env.VITE_API_BASE_URL || 'http://localhost:8000',
+        changeOrigin: true,
+        bypass: (req) => (isHtmlRequest(req) ? '/index.html' : undefined),
+      },
+      '/circuit-breaker': {
+        target: process.env.VITE_API_BASE_URL || 'http://localhost:8000',
+        changeOrigin: true,
+        bypass: (req) => (isHtmlRequest(req) ? '/index.html' : undefined),
+      },
+      '/lakehouse': {
+        target: process.env.VITE_API_BASE_URL || 'http://localhost:8000',
+        changeOrigin: true,
+        bypass: (req) => (isHtmlRequest(req) ? '/index.html' : undefined),
+      },
       '/lineage': {
         target: process.env.VITE_API_BASE_URL || 'http://localhost:8000',
         changeOrigin: true,

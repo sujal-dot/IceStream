@@ -118,10 +118,13 @@ class PipelineService:
         if self.remediation_controller and hasattr(self.remediation_controller, "flink_controller") and self.remediation_controller.flink_controller:
             self.remediation_controller.flink_controller.pause_job()
 
-        new_st = self.state_manager.transition_to(
-            to_state="PAUSED",
-            reason=reason or "Manual pause initiated via API",
-        )
+        try:
+            new_st = self.state_manager.transition_to(
+                to_state="PAUSED",
+                reason=reason or "Manual pause initiated via API",
+            )
+        except ValueError as err:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
 
         return PipelineControlResponse(
             pipeline_id=str(new_st.get("pipeline_id", "icestream")),
@@ -166,10 +169,13 @@ class PipelineService:
         if self.remediation_controller and hasattr(self.remediation_controller, "flink_controller") and self.remediation_controller.flink_controller:
             self.remediation_controller.flink_controller.resume_job()
 
-        new_st = self.state_manager.transition_to(
-            to_state="RUNNING",
-            reason=reason or "Manual resume initiated via API",
-        )
+        try:
+            new_st = self.state_manager.transition_to(
+                to_state="RUNNING",
+                reason=reason or "Manual resume initiated via API",
+            )
+        except ValueError as err:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
 
         return PipelineControlResponse(
             pipeline_id=str(new_st.get("pipeline_id", "icestream")),
@@ -216,9 +222,12 @@ class PipelineService:
             inc_id = inc["incident_id"]
 
         # Execute remediation using existing domain controller
-        result = self.remediation_controller.execute_remediation(
-            incident_id=inc_id, context=context
-        )
+        try:
+            result = self.remediation_controller.execute_remediation(
+                incident_id=inc_id, context=context
+            )
+        except ValueError as err:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
 
         resulting_state = self.state_manager.get_state().get("state", "RUNNING") if self.state_manager else result.stage
 

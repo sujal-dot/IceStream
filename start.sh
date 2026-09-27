@@ -425,7 +425,7 @@ if [ ${FRONTEND_RUNNING} -eq 1 ]; then
     echo -e "  React Frontend: ${GREEN}Already running on http://localhost:5173${NC}"
 else
     echo "  Starting React Frontend on http://localhost:5173..."
-    (cd "${SCRIPT_DIR}/frontend" && nohup npm run dev -- --port 5173 > "${LOGS_DIR}/frontend.log" 2>&1 & echo $! > "${FRONTEND_PID_FILE}")
+    (cd "${SCRIPT_DIR}/frontend" && nohup npx vite --host 0.0.0.0 --port 5173 > "${LOGS_DIR}/frontend.log" 2>&1 & echo $! > "${FRONTEND_PID_FILE}")
     wait_for_condition "React Frontend" "curl -sf http://localhost:5173" 30
 fi
 
