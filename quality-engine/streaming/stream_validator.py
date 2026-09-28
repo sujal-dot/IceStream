@@ -186,6 +186,39 @@ class StreamQualityValidator:
         # 3. Update ErrorRateEngine
         self.error_rate_engine.record_event(summary, timestamp=now_ts)
 
+        # 3.5 Record sanitized event metadata for frontend telemetry explorer
+        try:
+            from backend.services.event_service import record_sanitized_event
+            from backend.models.events import EventItem
+
+            event_time_str = raw_event_dict.get("event_time") or raw_event_dict.get("ingestion_time") or now_ts
+            status_str = "VALID" if is_valid else "QUARANTINED"
+            fail_reason = None
+            if not is_valid and summary:
+                failed_msgs = [r.message for r in summary.results if not r.passed]
+                fail_reason = " | ".join(failed_msgs) if failed_msgs else "Quality rule failure"
+
+            sanitized_dict = dict(raw_event_dict)
+            for k in list(sanitized_dict.keys()):
+                if any(sec in k.lower() for sec in ["secret", "password", "card", "token", "cvv"]):
+                    sanitized_dict[k] = "***REDACTED***"
+
+            item = EventItem(
+                event_id=str(event_id or f"evt_{now_ts}"),
+                event_timestamp=str(event_time_str),
+                order_id=raw_event_dict.get("order_id"),
+                currency=raw_event_dict.get("currency", "INR"),
+                amount=float(raw_event_dict.get("amount", 0.0)) if raw_event_dict.get("amount") is not None else None,
+                payment_status=str(raw_event_dict.get("payment_status", "COMPLETED") if is_valid else "QUARANTINED"),
+                status=status_str,
+                failure_reason=fail_reason,
+                payload_json=json.dumps(sanitized_dict, indent=2),
+                schema_version=str(raw_event_dict.get("source_version", "v1.0.0")),
+            )
+            record_sanitized_event(item)
+        except Exception as rec_err:
+            logger.debug("Could not record sanitized event: %s", rec_err)
+
         quarantine_result: Optional[QuarantineRouteResult] = None
         incident_id: Optional[str] = None
 
