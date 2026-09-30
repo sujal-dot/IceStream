@@ -63,6 +63,7 @@ VALID_TRANSITIONS: Dict[PipelineState, Set[PipelineState]] = {
     },
     PipelineState.CIRCUIT_OPEN: {
         PipelineState.REMEDIATING,
+        PipelineState.REFETCHING,
         PipelineState.RESUMING,
         PipelineState.RUNNING,
         PipelineState.PAUSED,

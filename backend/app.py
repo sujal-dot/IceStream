@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import logging
 import os
 import sys
+import time
 from typing import Any, Dict, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
@@ -153,34 +154,38 @@ def _start_kafka_telemetry_listener() -> None:
         _telemetry_thread_started = True
 
     def _telemetry_consumer_loop():
-        try:
-            from confluent_kafka import Consumer, KafkaError
-            from streaming.stream_validator import StreamQualityValidator
+        from confluent_kafka import Consumer, KafkaError
+        from streaming.stream_validator import StreamQualityValidator
 
-            bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "127.0.0.1:9092")
-            import uuid
-            telemetry_group = f"icestream-telemetry-{uuid.uuid4().hex[:8]}"
-            consumer = Consumer({
-                "bootstrap.servers": bootstrap_servers,
-                "group.id": telemetry_group,
-                "auto.offset.reset": "latest",
-                "enable.auto.commit": False,
-            })
-            consumer.subscribe(["checkout-events"])
+        bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "127.0.0.1:9092")
+        telemetry_group = os.getenv("KAFKA_TELEMETRY_GROUP_ID", "icestream-backend-telemetry")
 
-            validator = StreamQualityValidator(
-                error_rate_engine=get_error_rate_engine(),
-                circuit_breaker=get_circuit_breaker(),
-                state_manager=get_state_manager(),
-                remediation_controller=get_remediation_controller(),
-                pipeline_id="icestream",
-                auto_quarantine=True,
-                auto_trip_circuit=True,
-            )
-            logger.info("Kafka telemetry consumer started on topic 'checkout-events' at %s", bootstrap_servers)
-            validator.consume_stream(consumer)
-        except Exception as e:
-            logger.warning("Kafka telemetry background consumer stopped: %s", e)
+        logger.info("Kafka telemetry consumer loop initialized for topic 'checkout-events' at %s", bootstrap_servers)
+
+        while True:
+            try:
+                consumer = Consumer({
+                    "bootstrap.servers": bootstrap_servers,
+                    "group.id": telemetry_group,
+                    "auto.offset.reset": "latest",
+                    "enable.auto.commit": True,
+                })
+                consumer.subscribe(["checkout-events"])
+
+                validator = StreamQualityValidator(
+                    error_rate_engine=get_error_rate_engine(),
+                    circuit_breaker=get_circuit_breaker(),
+                    state_manager=get_state_manager(),
+                    remediation_controller=get_remediation_controller(),
+                    pipeline_id="icestream",
+                    auto_quarantine=True,
+                    auto_trip_circuit=True,
+                )
+                logger.info("Kafka telemetry consumer connected on topic 'checkout-events'")
+                validator.consume_stream(consumer)
+            except Exception as e:
+                logger.warning("Kafka telemetry background consumer disconnected: %s. Reconnecting in 3s...", e)
+                time.sleep(3)
 
     t = threading.Thread(target=_telemetry_consumer_loop, daemon=True, name="KafkaTelemetryListener")
     t.start()

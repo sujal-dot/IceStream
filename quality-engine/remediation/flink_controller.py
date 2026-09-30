@@ -446,6 +446,9 @@ class FlinkController:
                 else:
                     sql_rendered = savepoint_directive + sql_rendered
 
+            if not sql_rendered.strip().endswith("EXIT;"):
+                sql_rendered += "\nEXIT;\n"
+
             cmd = ["docker", "exec", "-i", self.jobmanager_container, "/opt/flink/bin/sql-client.sh"]
             proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             proc.communicate(input=sql_rendered, timeout=20)

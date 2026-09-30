@@ -198,12 +198,15 @@ class ErrorRateEngine:
         timestamp: Optional[Union[datetime, str]] = None,
     ) -> None:
         """Record an event validation summary outcome into rolling windows.
-        
-        Event validity rule:
-            summary.overall_status == EventStatus.HEALTHY -> valid event (is_valid=True)
-            summary.overall_status != EventStatus.HEALTHY -> failed event (is_valid=False)
+
+        Event validity rule (aligned with StreamQualityValidator):
+            summary.overall_status in (HEALTHY, WARNING) -> valid event (is_valid=True)
+            summary.overall_status == FAILED             -> failed event (is_valid=False)
+
+        WARNING status means only low/medium severity rules fired (e.g. late_event).
+        Those events still pass downstream and must NOT inflate the error rate.
         """
-        is_valid = (summary.overall_status == EventStatus.HEALTHY)
+        is_valid = summary.overall_status in (EventStatus.HEALTHY, EventStatus.WARNING)
         self.record_event_outcome(is_valid=is_valid, timestamp=timestamp)
 
     def classify(self, error_rate: float) -> HealthStatus:

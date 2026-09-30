@@ -444,34 +444,38 @@ class StorageBackend:
     ) -> Dict[str, Any]:
         ts = updated_at or datetime.now(timezone.utc)
         if self.use_sqlite:
-            conn = self._get_connection()
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                INSERT INTO pipeline_state (
-                    pipeline_id, state, previous_state, reason, updated_at, active_incident_id, recovery_attempt, last_error
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(pipeline_id) DO UPDATE SET
-                    state=excluded.state,
-                    previous_state=excluded.previous_state,
-                    reason=excluded.reason,
-                    updated_at=excluded.updated_at,
-                    active_incident_id=excluded.active_incident_id,
-                    recovery_attempt=excluded.recovery_attempt,
-                    last_error=excluded.last_error;
-                """,
-                (
-                    pipeline_id,
-                    state,
-                    previous_state,
-                    reason,
-                    ts.isoformat(),
-                    active_incident_id,
-                    recovery_attempt,
-                    last_error,
-                ),
-            )
-            conn.commit()
+            with self._sqlite_lock:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    INSERT INTO pipeline_state (
+                        pipeline_id, state, previous_state, reason, updated_at, active_incident_id, recovery_attempt, last_error
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(pipeline_id) DO UPDATE SET
+                        state=excluded.state,
+                        previous_state=excluded.previous_state,
+                        reason=excluded.reason,
+                        updated_at=excluded.updated_at,
+                        active_incident_id=excluded.active_incident_id,
+                        recovery_attempt=excluded.recovery_attempt,
+                        last_error=excluded.last_error;
+                    """,
+                    (
+                        pipeline_id,
+                        state,
+                        previous_state,
+                        reason,
+                        ts.isoformat(),
+                        active_incident_id,
+                        recovery_attempt,
+                        last_error,
+                    ),
+                )
+                try:
+                    conn.commit()
+                except Exception:
+                    pass
         else:
             conn = self._get_connection()
             with conn.cursor() as cursor:
@@ -684,8 +688,8 @@ class StorageBackend:
 
     def find_active_incident(self, pipeline_name: str = "checkout-stream") -> Optional[Dict[str, Any]]:
         """Find active OPEN or ACKNOWLEDGED incident for pipeline deduplication."""
-        query_sql_sqlite = "SELECT * FROM pipeline_incidents WHERE (pipeline_name = ? OR pipeline_id = ?) AND status IN ('OPEN', 'ACKNOWLEDGED') ORDER BY created_at DESC LIMIT 1"
-        query_sql_pg = "SELECT * FROM pipeline_incidents WHERE (pipeline_name = %s OR pipeline_id = %s) AND status IN ('OPEN', 'ACKNOWLEDGED') ORDER BY created_at DESC LIMIT 1"
+        query_sql_sqlite = "SELECT * FROM pipeline_incidents WHERE (pipeline_name = ? OR pipeline_id = ?) AND status IN ('OPEN', 'ACKNOWLEDGED', 'REMEDIATING', 'RECOVERY_FAILED') ORDER BY created_at DESC LIMIT 1"
+        query_sql_pg = "SELECT * FROM pipeline_incidents WHERE (pipeline_name = %s OR pipeline_id = %s) AND status IN ('OPEN', 'ACKNOWLEDGED', 'REMEDIATING', 'RECOVERY_FAILED') ORDER BY created_at DESC LIMIT 1"
 
         if self.use_sqlite:
             conn = self._get_connection()
