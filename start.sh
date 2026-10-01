@@ -196,11 +196,11 @@ show_status() {
     trap '' ERR
     set +e
     local active_job
-    active_job=$(curl -s "http://localhost:8081/jobs/overview" 2>/dev/null | ${PYTHON_EXEC} -c "
+    active_job=$(curl -s "http://localhost:8081/v1/jobs/overview" 2>/dev/null | ${PYTHON_EXEC} -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
-    jobs = [j for j in data.get('jobs', []) if j.get('state') == 'RUNNING' and ('checkout_events' in j.get('name', '') or 'icestream' in j.get('name', ''))]
+    jobs = [j for j in data.get('jobs', []) if j.get('state') == 'RUNNING' and ('checkout_events' in j.get('name', '') or 'icestream' in j.get('name', '') or 'insert-into' in j.get('name', ''))]
     print(jobs[0]['name'] if jobs else '')
 except Exception:
     print('')
@@ -298,7 +298,7 @@ echo -e "${GREEN}✓ Environment variables loaded from .env.${NC}\n"
 
 # [3/7] Starting Infrastructure via Docker Compose
 echo -e "${BLUE}[3/7] Starting infrastructure services (Docker Compose)...${NC}"
-docker compose up -d
+docker compose --profile app up -d
 echo -e "${GREEN}✓ Containers launched.${NC}\n"
 
 # [4/7] Waiting for Infrastructure Services Readiness
@@ -360,26 +360,12 @@ bash scripts/minio/init_buckets.sh >/dev/null 2>&1 || true
 PYTHONPATH="${SCRIPT_DIR}" ${PYTHON_EXEC} scripts/iceberg/init_catalog.py >/dev/null 2>&1 || true
 
 # 4. Flink Streaming Job Check & Submission
-ACTIVE_JOB_ID=$(curl -s "http://localhost:8081/jobs/overview" 2>/dev/null | ${PYTHON_EXEC} -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    jobs = [j for j in data.get('jobs', []) if j.get('state') == 'RUNNING' and ('checkout_events' in j.get('name', '') or 'icestream' in j.get('name', ''))]
-    if jobs:
-        print(jobs[0]['jid'])
-except Exception:
-    print('')
-" || echo "")
-
-if [ -z "${ACTIVE_JOB_ID}" ]; then
-    echo "  Submitting Flink Bronze streaming pipeline job..."
-    ${PYTHON_EXEC} ${SCRIPT_DIR}/scripts/submit_flink_job.py >/dev/null 2>&1 || true
-    sleep 3
-fi
+echo "  Submitting Flink Bronze streaming pipeline job..."
+${PYTHON_EXEC} ${SCRIPT_DIR}/scripts/submit_flink_job.py
 set -e
 trap 'trap_error ${LINENO}' ERR
 
-wait_for_condition "Flink Streaming Job" "curl -s http://localhost:8081/jobs/overview | grep -q 'RUNNING'" 30
+wait_for_condition "Flink Streaming Job" "curl -s http://localhost:8081/v1/jobs/overview | grep -q 'RUNNING'" 30
 echo -e "${GREEN}✓ Storage and streaming pipeline initialized.${NC}\n"
 
 # [6/7] Starting Application Layer (FastAPI Backend & React Frontend)

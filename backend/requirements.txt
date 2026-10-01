@@ -16,3 +16,7 @@ httpx2>=2.0.0
 s3fs>=2024.1.0
 pyiceberg[s3fs]>=0.6.0
 boto3>=1.34.0
+# Quality-engine runtime dependencies (imported transitively via hybrid_engine / GE adapter)
+pandas>=2.0.0,<3.0.0
+great_expectations==0.18.19
+pyarrow>=14.0.0,<20.0.0

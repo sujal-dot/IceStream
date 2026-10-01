@@ -292,22 +292,96 @@ def create_app(
         "/health",
         tags=["Health"],
         summary="Service Health Check",
-        description="Verify backend HTTP service availability and non-sensitive dependency status (distinguished from pipeline data health).",
+        description="Verify backend HTTP service availability and real dependency status.",
     )
     def health_check() -> Dict[str, Any]:
-        """Return HTTP backend service health and dependency status."""
+        """Return HTTP backend service health with real dependency checks."""
         db_status = check_db_health(get_db_storage())
-        return {
-            "status": "ok",
-            "service": "icestream-backend",
-            "version": "0.23.0",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "dependencies": {
-                "postgres": db_status,
-                "quality_engine": "ok",
-                "iceberg_catalog": "ok",
-            },
+
+        # ── Real Iceberg catalog check ──────────────────────────────────────
+        iceberg_status = "ok"
+        iceberg_detail: Optional[str] = None
+        try:
+            import urllib.request as _ureq
+            iceberg_uri = (
+                os.getenv("ICEBERG_REST_URI")
+                or os.getenv("ICEBERG_CATALOG_URI")
+                or "http://iceberg-rest:8181"
+            )
+            # Lightweight config endpoint — does not require auth
+            with _ureq.urlopen(f"{iceberg_uri}/v1/config", timeout=2) as _resp:
+                if _resp.status not in (200, 204):
+                    iceberg_status = "degraded"
+                    iceberg_detail = f"HTTP {_resp.status}"
+        except Exception as _ex:
+            # Fallback check localhost if container URI failed
+            try:
+                with _ureq.urlopen("http://localhost:8181/v1/config", timeout=2) as _resp:
+                    if _resp.status in (200, 204):
+                        iceberg_status = "ok"
+                    else:
+                        iceberg_status = "degraded"
+            except Exception:
+                iceberg_status = "unhealthy"
+                iceberg_detail = str(_ex)[:120]
+
+        # ── Quality engine liveness check ───────────────────────────────────
+        qe_status = "ok"
+        qe_detail: Optional[str] = None
+        try:
+            eng = get_error_rate_engine()
+            snap = eng.get_metrics_snapshot()
+            _ = snap.get("windows", {})
+        except Exception as _ex:
+            qe_status = "degraded"
+            qe_detail = str(_ex)[:120]
+
+        # ── Aggregate overall health ────────────────────────────────────────
+        all_statuses = [db_status, iceberg_status, qe_status]
+        if "unhealthy" in all_statuses:
+            overall = "unhealthy"
+        elif "degraded" in all_statuses or any(s not in ("ok", "healthy") for s in all_statuses):
+            overall = "degraded"
+        else:
+            overall = "ok"
+
+        deps: Dict[str, Any] = {
+            "postgres": db_status,
+            "quality_engine": qe_status,
+            "iceberg_catalog": iceberg_status,
         }
+        if iceberg_detail:
+            deps["iceberg_catalog_detail"] = iceberg_detail
+        if qe_detail:
+            deps["quality_engine_detail"] = qe_detail
+
+        return {
+            "status": overall,
+            "service": "icestream-backend",
+            "version": "0.25.0",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "dependencies": deps,
+        }
+
+    # ── Prometheus metrics scrape endpoint ─────────────────────────────────
+    @app.get(
+        "/prometheus",
+        tags=["Health"],
+        summary="Prometheus Metrics Scrape Endpoint",
+        description="Exposes Prometheus-format metrics for scraping by prometheus server.",
+        include_in_schema=False,
+    )
+    def prometheus_metrics():
+        """Expose prometheus_client default registry in text format."""
+        try:
+            from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+            from starlette.responses import Response as StarletteResponse
+            return StarletteResponse(
+                content=generate_latest(),
+                media_type=CONTENT_TYPE_LATEST,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     @app.get(
         "/circuit-breaker",
@@ -360,3 +434,4 @@ def create_app(
 
 
 app = create_app()
+
