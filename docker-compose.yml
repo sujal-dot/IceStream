@@ -151,6 +151,7 @@ services:
     command: jobmanager
     ports:
       - "8081:8081"
+      - "9250:9250"
     environment:
       ENABLE_BUILT_IN_PLUGINS: "flink-s3-fs-hadoop-1.18.1.jar"
       AWS_REGION: ${MINIO_REGION:-us-east-1}
@@ -180,6 +181,8 @@ services:
         restart-strategy.type: fixed-delay
         restart-strategy.fixed-delay.attempts: ${FLINK_RESTART_ATTEMPTS:-3}
         restart-strategy.fixed-delay.delay: ${FLINK_RESTART_DELAY_SECONDS:-10}s
+        metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+        metrics.reporter.prom.port: 9250
     depends_on:
       minio:
         condition: service_healthy
@@ -235,6 +238,8 @@ services:
         restart-strategy.type: fixed-delay
         restart-strategy.fixed-delay.attempts: ${FLINK_RESTART_ATTEMPTS:-3}
         restart-strategy.fixed-delay.delay: ${FLINK_RESTART_DELAY_SECONDS:-10}s
+        metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+        metrics.reporter.prom.port: 9250
     depends_on:
       flink-jobmanager:
         condition: service_healthy

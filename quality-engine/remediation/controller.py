@@ -88,7 +88,7 @@ class RemediationController:
         storage: Optional[StorageBackend] = None,
         flink_controller: Optional[FlinkController] = None,
         lakehouse_sink: Optional[LakehouseSink] = None,
-        max_recovery_attempts: int = 3,
+        max_recovery_attempts: Optional[float] = float("inf"),
     ):
         self.pipeline_id = pipeline_id
         self.storage = storage or get_db_storage()
@@ -228,7 +228,11 @@ class RemediationController:
             incident = self.get_or_create_incident(incident_id=incident_id)
             attempt_num = incident.get("recovery_attempt", 0) + 1
 
-            if attempt_num > self.max_recovery_attempts:
+            if (
+                self.max_recovery_attempts is not None
+                and self.max_recovery_attempts > 0
+                and attempt_num > self.max_recovery_attempts
+            ):
                 logger.error(
                     f"[RemediationController] Max recovery attempts ({self.max_recovery_attempts}) "
                     f"exceeded for incident '{incident_id}'."

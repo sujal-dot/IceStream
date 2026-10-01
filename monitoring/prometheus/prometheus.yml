@@ -13,10 +13,16 @@ scrape_configs:
     static_configs:
       - targets: ['icestream-backend:8000']
 
+  # Flink JobManager — native Prometheus metrics endpoint (port 9250)
+  # Enabled via: metrics.reporter.prom.factory.class + ENABLE_BUILT_IN_PLUGINS
   - job_name: 'flink-jobmanager'
-    metrics_path: '/v1/overview'
     static_configs:
-      - targets: ['icestream-flink-jobmanager:8081']
+      - targets: ['icestream-flink-jobmanager:9250']
+
+  # Flink TaskManager — native Prometheus metrics endpoint (port 9250)
+  - job_name: 'flink-taskmanager'
+    static_configs:
+      - targets: ['icestream-flink-taskmanager:9250']
 
   - job_name: 'grafana'
     static_configs:

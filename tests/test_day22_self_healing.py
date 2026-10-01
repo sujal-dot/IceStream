@@ -309,6 +309,32 @@ def test_13_max_attempts(controller, circuit_breaker, source_adapter):
     assert res4.attempt == 3
 
 
+def test_unlimited_attempts(memory_db, state_manager, circuit_breaker, mock_alert, source_adapter, reprocessor, quarantine_writer, mock_lakehouse_sink):
+    """Test unlimited recovery attempts with default RemediationController config."""
+    unlimited_controller = RemediationController(
+        pipeline_id="unlimited_test",
+        state_manager=state_manager,
+        circuit_breaker=circuit_breaker,
+        alert_service=mock_alert,
+        source_adapter=source_adapter,
+        reprocessor=reprocessor,
+        quarantine_writer=quarantine_writer,
+        storage=memory_db,
+        lakehouse_sink=mock_lakehouse_sink,
+    )
+    circuit_breaker.transition_to(CircuitState.OPEN, reason="test_open")
+    circuit_breaker._opened_at_dt = circuit_breaker.clock.now() - timedelta(seconds=10)
+    source_adapter.register_fixture("evt_fail", {"amount": -100})
+    inc = unlimited_controller.get_or_create_incident(error_rate=0.05)
+    ctx = {"event_ids": ["evt_fail"]}
+
+    for i in range(1, 5):
+        circuit_breaker._opened_at_dt = circuit_breaker.clock.now() - timedelta(seconds=10)
+        res = unlimited_controller.execute_remediation(inc["incident_id"], context=ctx)
+        assert res.attempt == i
+        assert res.stage != "MAX_ATTEMPTS_EXCEEDED"
+
+
 def test_14_idempotency(controller, circuit_breaker):
     """Test 14: Verify duplicate remediation triggers do not launch concurrent duplicate workflows."""
     circuit_breaker.transition_to(CircuitState.OPEN, reason="test_open")
