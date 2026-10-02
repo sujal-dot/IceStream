@@ -19,6 +19,8 @@ cp .env.example .env
 ./start.sh
 ```
 
+> 💡 **Windows Users**: See the step-by-step [Windows Setup Guide](windowssetup.md) for running IceStream via WSL 2 or native PowerShell.
+
 ### Management Commands
 
 - **Check Service Status**: `./start.sh --status`
