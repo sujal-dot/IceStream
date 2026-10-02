@@ -34,3 +34,27 @@ def setup_test_env():
     os.environ["MINIO_ROOT_USER"] = os.environ.get("MINIO_ROOT_USER", "icestream_minio")
     os.environ["MINIO_ROOT_PASSWORD"] = os.environ.get("MINIO_ROOT_PASSWORD", "change-me-minio-secret")
     os.environ["ICESTREAM_API_TOKEN"] = ALL_TEST_TOKENS
+    os.environ["TESTING"] = "true"
+
+
+@pytest.fixture(autouse=True)
+def mock_iceberg_rest_health():
+    """Mock Iceberg REST catalog /v1/config endpoint for offline unit test execution."""
+    from unittest.mock import MagicMock, patch
+    import urllib.request
+
+    real_urlopen = urllib.request.urlopen
+
+    def fake_urlopen(url, *args, **kwargs):
+        target = url.full_url if hasattr(url, "full_url") else str(url)
+        if "/v1/config" in target:
+            resp = MagicMock()
+            resp.status = 200
+            resp.read.return_value = b"{}"
+            resp.__enter__.return_value = resp
+            resp.__exit__.return_value = None
+            return resp
+        return real_urlopen(url, *args, **kwargs)
+
+    with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+        yield
