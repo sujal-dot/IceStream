@@ -14,11 +14,17 @@ def get_catalog_config(is_internal: bool = False) -> Dict[str, Any]:
     """
     rest_uri = os.getenv(
         "ICEBERG_REST_URI_INTERNAL" if is_internal else "ICEBERG_REST_URI",
-        "http://iceberg-rest:8181" if is_internal else "http://localhost:8181"
+        os.getenv(
+            "ICEBERG_CATALOG_URI",
+            "http://iceberg-rest:8181" if is_internal else "http://localhost:8181",
+        ),
     )
     minio_endpoint = os.getenv(
         "MINIO_ENDPOINT_INTERNAL" if is_internal else "MINIO_ENDPOINT",
-        "http://minio:9000" if is_internal else "http://localhost:9000"
+        os.getenv(
+            "AWS_S3_ENDPOINT",
+            "http://minio:9000" if is_internal else "http://localhost:9000",
+        ),
     )
     access_key = os.getenv("MINIO_ROOT_USER") or os.getenv("MINIO_ACCESS_KEY") or os.getenv("AWS_ACCESS_KEY_ID") or "icestream_minio"
     secret_key = os.getenv("MINIO_ROOT_PASSWORD") or os.getenv("MINIO_SECRET_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY") or "change-me-minio-secret"
